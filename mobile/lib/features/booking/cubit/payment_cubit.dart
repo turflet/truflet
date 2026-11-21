@@ -83,20 +83,31 @@ class PaymentCubit extends Cubit<PaymentState> {
     }
   }
 
-  /// Pays for the held slot. Returns the confirmed booking, or an error message to show.
-  Future<({Json? booking, String? error})> pay(String upiId) async {
-    if (state.left == Duration.zero) return (booking: null, error: 'Your slot hold expired. Please pick the slot again.');
+  /// Pays for the held slot. Returns the confirmed booking, or a pending UPI `checkout` to open
+  /// (the booking stays held until the gateway reports the money), or an error message to show.
+  Future<({Json? booking, Json? checkout, String? error})> pay(String upiId) async {
+    if (state.left == Duration.zero) {
+      return (booking: null, checkout: null, error: 'Your slot hold expired. Please pick the slot again.');
+    }
     _emit(state.copyWith(busy: true));
     try {
       final r = await _repo.pay(state.booking['id'], method: state.method, upiId: upiId.trim());
+      final payment = r['payment'];
+      if (payment is Map && payment['status'] == 'pending' && r['status'] != 'confirmed') {
+        _emit(state.copyWith(booking: r)); // hold was extended for the payment window
+        return (booking: null, checkout: Json.from(payment), error: null);
+      }
       _app.refreshMe(); // wallet balance may have changed
-      return (booking: r, error: null);
+      return (booking: r, checkout: null, error: null);
     } catch (e) {
-      return (booking: null, error: e.toString());
+      return (booking: null, checkout: null, error: e.toString());
     } finally {
       _emit(state.copyWith(busy: false));
     }
   }
+
+  /// Latest state of the UPI payment: the booking with its `payment`.
+  Future<Json> paymentStatus() => _repo.paymentStatus(state.booking['id']);
 
   void _emit(PaymentState s) {
     if (!isClosed) emit(s);

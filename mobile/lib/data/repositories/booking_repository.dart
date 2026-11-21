@@ -21,8 +21,13 @@ class BookingRepository {
   Future<Json> applyCoupon(int bookingId, String code) async =>
       asMap(await _api.post('/bookings/$bookingId/coupon/', {'code': code}));
 
+  /// Returns the booking. With UPI checkout on, UPI returns it still held plus a `payment`
+  /// (`{id, status: pending, checkout_url, ...}`) to open; the booking is confirmed once the gateway reports it.
   Future<Json> pay(int bookingId, {required String method, required String upiId}) async =>
       asMap(await _api.post('/bookings/$bookingId/pay/', {'method': method, 'upi_id': upiId}));
+
+  /// The booking plus its latest UPI `payment` (pending | success | failed | expired | cancelled).
+  Future<Json> paymentStatus(int bookingId) async => asMap(await _api.get('/bookings/$bookingId/payment/'));
 
   /// Refund the player would get if they cancelled now.
   Future<Json> cancelQuote(int bookingId) async => asMap(await _api.get('/bookings/$bookingId/cancel/'));

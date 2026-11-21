@@ -168,11 +168,16 @@ def pay(booking, method, upi_id=""):
         booking.payment_status = "failed"
         booking.save(update_fields=["payment_status"])
         raise ValidationError({"payment": result.message or "Payment failed. Please try again."})
+    return _confirm(booking, method, result.transaction_id, upi_id)
+
+
+def _confirm(booking, method, transaction_id, upi_id=""):
+    """Marks a locked booking paid and confirmed, then tells the player and the match."""
     booking.status = "confirmed"
     booking.payment_status = "paid"
     booking.payment_method = method
     booking.upi_id = upi_id
-    booking.transaction_id = result.transaction_id
+    booking.transaction_id = transaction_id
     booking.paid_at = timezone.now()
     booking.save()
     notifications.notify(booking.user_id, "Booking confirmed",
@@ -180,6 +185,73 @@ def pay(booking, method, upi_id=""):
     from community.services import on_booking_paid
     on_booking_paid(booking)
     return booking
+
+
+# --- UPI through the YOUPI checkout: the booking is confirmed only when the gateway reports the money ---
+
+UPI_CHECKOUT_MINUTES = 10  # YOUPI's 5-minute payment window plus time for the bank SMS to be matched
+
+
+@transaction.atomic
+def start_upi_payment(booking):
+    """Opens (or reuses) a YOUPI checkout for a held booking. Returns (booking, payment dict)."""
+    booking = Booking.objects.select_for_update().get(pk=booking.pk)
+    if booking.status == "confirmed":
+        raise ValidationError({"booking": "This booking is already paid."})
+    now = timezone.now()
+    if booking.status != "held" or not booking.held_until or booking.held_until < now:
+        if booking.status == "held":
+            booking.status = "expired"
+            booking.save(update_fields=["status"])
+        raise ValidationError({"booking": "Your slot hold expired. Please pick the slot again."})
+    # keep the slot for the whole payment window, so a player who is paying doesn't lose it mid-way
+    booking.held_until = max(booking.held_until, now + timedelta(minutes=UPI_CHECKOUT_MINUTES))
+    booking.payment_method = "upi"
+    booking.payment_status = "pending"
+    booking.save(update_fields=["held_until", "payment_method", "payment_status", "updated_at"])
+    payment = payments.start_upi_checkout(
+        booking.user, "booking", booking.id, booking.code, booking.total,
+        description=f"{booking.venue.name} · {booking.date:%-d %b} · {fmt_hour(booking.start_hour)}",
+    )
+    return booking, payment.as_dict()
+
+
+def upi_payment_status(booking):
+    """Latest UPI payment for the booking, refreshed from the gateway while pending. Returns (booking, payment dict)."""
+    from payments.models import Payment
+
+    payment = Payment.objects.filter(purpose="booking", reference_id=booking.id).first()
+    if payment is None:
+        return booking, None
+    payment = payments.sync_payment(payment)
+    booking.refresh_from_db()
+    return booking, payment.as_dict()
+
+
+@transaction.atomic
+def on_payment_succeeded(sender, payment, **kwargs):
+    """Receiver for `payments.payment_succeeded`. Returns True when this payment confirms (or confirmed) the booking."""
+    if payment["purpose"] != "booking":
+        return None
+    booking = Booking.objects.select_for_update().filter(pk=payment["reference_id"]).first()
+    if booking is None or payment["amount"] != booking.total:
+        return False
+    if booking.status == "confirmed":
+        if booking.payment_method != "upi" or booking.transaction_id not in (payment["gateway_id"], payment["utr"]):
+            return False  # already paid by something else: this money goes back
+        if booking.transaction_id != payment["transaction_id"]:
+            booking.transaction_id = payment["transaction_id"]  # the bank UTR arrived after the gateway id
+            booking.save(update_fields=["transaction_id", "updated_at"])
+        return True
+    if booking.status not in ("held", "expired"):
+        return False  # cancelled meanwhile: the money goes back
+    if booking.status == "expired" or not booking.held_until or booking.held_until < timezone.now():
+        # paid after the hold ran out: still confirm when nobody else took the slot
+        if check_range(_vs(booking), booking.court, booking.date, booking.start_hour, booking.duration,
+                       exclude_booking=booking):
+            return False
+    _confirm(booking, "upi", payment["transaction_id"])
+    return True
 
 
 def cancel_quote(booking):

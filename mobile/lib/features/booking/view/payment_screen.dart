@@ -10,6 +10,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../../data/repositories/booking_repository.dart';
 import '../cubit/payment_cubit.dart';
+import 'upi_checkout_sheet.dart';
 
 /// 7 · Review & pay
 class PaymentScreen extends StatelessWidget {
@@ -55,7 +56,14 @@ class _PaymentViewState extends State<_PaymentView> {
       toast(context, r.error!);
       return;
     }
-    context.replaceWithBookingConfirmed(r.booking!);
+    var booking = r.booking;
+    if (r.checkout != null) {
+      // UPI via the gateway checkout: wait until the server has confirmed the money
+      booking = await showUpiCheckout(context, payment: r.checkout!, poll: _cubit.paymentStatus);
+      if (!mounted || booking == null) return;
+      context.read<AppCubit>().refreshMe();
+    }
+    context.replaceWithBookingConfirmed(booking!);
   }
 
   @override
@@ -108,7 +116,11 @@ class _PaymentViewState extends State<_PaymentView> {
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
               children: [
                 Container(
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), boxShadow: shadowCard),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: shadowCard,
+                  ),
                   clipBehavior: Clip.antiAlias,
                   child: Column(
                     children: [
@@ -151,9 +163,17 @@ class _PaymentViewState extends State<_PaymentView> {
                         ),
                         child: Row(
                           children: [
-                            Expanded(child: KV('Date', b['date_label'].toString().replaceFirst('Today, ', 'Today, '), vSize: 13)),
+                            Expanded(
+                              child: KV(
+                                'Date',
+                                b['date_label'].toString().replaceFirst('Today, ', 'Today, '),
+                                vSize: 13,
+                              ),
+                            ),
                             Expanded(child: KV('Time', b['time_short'], vSize: 13)),
-                            Expanded(child: KV('Duration', '${b['duration']} ${b['duration'] == 1 ? 'hr' : 'hrs'}', vSize: 13)),
+                            Expanded(
+                              child: KV('Duration', '${b['duration']} ${b['duration'] == 1 ? 'hr' : 'hrs'}', vSize: 13),
+                            ),
                           ],
                         ),
                       ),
@@ -301,7 +321,10 @@ class _PaymentViewState extends State<_PaymentView> {
                     const Icon(LucideIcons.shieldCheck, size: 14, color: C.muted),
                     const SizedBox(width: 6),
                     Flexible(
-                      child: Text('100% secure payments · Free cancellation up to 6 hrs before', style: t(12, c: C.muted)),
+                      child: Text(
+                        '100% secure payments · Free cancellation up to 6 hrs before',
+                        style: t(12, c: C.muted),
+                      ),
                     ),
                   ],
                 ),
@@ -408,7 +431,8 @@ class _PaymentViewState extends State<_PaymentView> {
               ),
             ),
           ),
-          if (on && m.$1 == 'upi')
+          // with the gateway checkout the player picks their UPI app there, so no UPI ID is needed here
+          if (on && m.$1 == 'upi' && context.read<AppCubit>().state.config['upi_checkout'] != true)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
               child: Column(

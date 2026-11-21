@@ -159,6 +159,15 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Turflet <no-reply@turflet.
 # PAYMENT_PROVIDER: "mock" confirms instantly. Add a real gateway in payments/gateways.py.
 PAYMENT_PROVIDER = os.getenv("PAYMENT_PROVIDER", "mock")
 
+# UPI_CHECKOUT=youpi sends UPI booking payments through the self-hosted YOUPI gateway: the app opens its
+# checkout and the booking is confirmed only when YOUPI reports the money (signed webhook or status check).
+# Empty = UPI goes through PAYMENT_PROVIDER like the other methods.
+UPI_CHECKOUT = os.getenv("UPI_CHECKOUT", "").strip().lower()
+YOUPI_API_URL = os.getenv("YOUPI_API_URL", "")  # the payment API host, e.g. https://pay-api.example.com
+YOUPI_MERCHANT_ID = os.getenv("YOUPI_MERCHANT_ID", "")
+YOUPI_MERCHANT_KEY = os.getenv("YOUPI_MERCHANT_KEY", "")  # secret: server-side only
+YOUPI_WEBHOOK_SECRET = os.getenv("YOUPI_WEBHOOK_SECRET", "")  # secret: verifies X-Gateway-Signature
+
 # Service layer: dotted path to the class behind each service's interface. The defaults run in this
 # process; point these at client classes (HTTP / queue) once a service runs as its own microservice.
 PAYMENT_SERVICE = os.getenv("PAYMENT_SERVICE", "payments.service.LocalPaymentService")
