@@ -226,3 +226,24 @@ class YoupiCheckoutTests(TestCase):
         r = self.api.post(f"/api/v1/bookings/{self.booking.id}/pay/", {"method": "upi"}, format="json")
         self.assertEqual(r.json()["status"], "confirmed")
         self.assertFalse(Payment.objects.exists())
+
+
+class YoupiClientTests(TestCase):
+    """The signed-in player is vouched for, so YOUPI's checkout skips its OTP step."""
+
+    @override_settings(**YOUPI)
+    def test_customer_with_phone_is_sent_as_verified(self):
+        from . import youpi
+
+        sent = {}
+
+        def fake_post(url, json=None, headers=None, timeout=None):
+            sent.update(json)
+            return mock.Mock(status_code=201, json=lambda: {"paymentId": "p1", "checkoutUrl": "https://x/checkout/p1"})
+
+        with mock.patch("payments.youpi.requests.post", side_effect=fake_post):
+            youpi.create_payment("O-1", 100, customer={"name": "A", "email": "a@x.com", "phoneNumber": "9800000031"})
+            self.assertIs(sent.get("customerVerified"), True)
+            sent.clear()
+            youpi.create_payment("O-2", 100, customer={"name": "B", "email": "b@x.com", "phoneNumber": ""})
+            self.assertNotIn("customerVerified", sent)

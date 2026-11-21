@@ -8,6 +8,7 @@ import '../../../core/theme/theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../../data/repositories/lobby_repository.dart';
+import '../../booking/view/upi_checkout_sheet.dart';
 import 'lobby_widgets.dart';
 
 /// 7 · Split Checkout & Escrow: itemised turf share + platform fee, one-tap UPI, escrow protection.
@@ -63,8 +64,21 @@ class _CheckoutSheetState extends State<_CheckoutSheet> {
           ? await _repo.action(widget.lobbyId, 'pay-balance', {'method': method, 'upi_id': upi.text.trim()})
           : await _repo.pay(widget.lobbyId, method: method, upiId: upi.text.trim());
       if (!mounted) return;
+      var result = r;
+      final payment = r['payment'];
+      if (payment is Map && payment['status'] == 'pending') {
+        // UPI via the gateway checkout: wait until the server has the money
+        final done = await showUpiCheckout(
+          context,
+          payment: Json.from(payment),
+          poll: () => _repo.paymentStatus(widget.lobbyId),
+          done: (s) => s['payment'] is Map && s['payment']['status'] == 'success',
+        );
+        if (!mounted || done == null) return;
+        result = done;
+      }
       context.read<AppCubit>().refreshMe(); // wallet may have changed
-      Navigator.pop(context, r);
+      Navigator.pop(context, result);
     } catch (e) {
       if (mounted) toast(context, e.toString());
     } finally {
@@ -185,7 +199,8 @@ class _CheckoutSheetState extends State<_CheckoutSheet> {
         ),
         const SizedBox(height: 14),
         _option('upi', 'UPI', 'One tap with any UPI app', LucideIcons.chevronsRight),
-        if (method == 'upi')
+        // with the gateway checkout the player picks their UPI app there, so no UPI ID is needed here
+        if (method == 'upi' && context.read<AppCubit>().state.config['upi_checkout'] != true)
           Container(
             height: 46,
             margin: const EdgeInsets.only(bottom: 8),

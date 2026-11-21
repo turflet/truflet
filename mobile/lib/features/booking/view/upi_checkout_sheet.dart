@@ -12,21 +12,28 @@ import '../../../core/widgets/widgets.dart';
 /// Opens the YOUPI checkout for a pending UPI [payment] and waits for the backend to confirm it.
 ///
 /// The booking is confirmed by the server (signed gateway webhook or its own status check), never by the app:
-/// this sheet only polls [poll] and closes with the confirmed booking. Returns null when the player leaves.
-Future<Json?> showUpiCheckout(BuildContext context, {required Json payment, required Future<Json> Function() poll}) =>
+/// this sheet only polls [poll] and closes with its latest result once [done] says so (default: the booking is
+/// confirmed). Returns null when the player leaves.
+Future<Json?> showUpiCheckout(
+  BuildContext context, {
+  required Json payment,
+  required Future<Json> Function() poll,
+  bool Function(Json r)? done,
+}) =>
     showModalBottomSheet<Json>(
       context: context,
       isDismissible: false,
       enableDrag: false,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (_) => _UpiCheckoutSheet(payment: payment, poll: poll),
+      builder: (_) => _UpiCheckoutSheet(payment: payment, poll: poll, done: done ?? (r) => r['status'] == 'confirmed'),
     );
 
 class _UpiCheckoutSheet extends StatefulWidget {
   final Json payment;
   final Future<Json> Function() poll;
-  const _UpiCheckoutSheet({required this.payment, required this.poll});
+  final bool Function(Json r) done;
+  const _UpiCheckoutSheet({required this.payment, required this.poll, required this.done});
 
   @override
   State<_UpiCheckoutSheet> createState() => _UpiCheckoutSheetState();
@@ -88,7 +95,7 @@ class _UpiCheckoutSheetState extends State<_UpiCheckoutSheet> with WidgetsBindin
       final r = await widget.poll();
       if (!mounted) return;
       final status = (r['payment'] is Map) ? r['payment']['status'] : null;
-      if (r['status'] == 'confirmed') {
+      if (widget.done(r)) {
         _timer?.cancel();
         await _closeBrowser();
         if (mounted) Navigator.of(context).pop(r);

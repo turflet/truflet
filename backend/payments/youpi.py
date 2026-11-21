@@ -64,6 +64,11 @@ def create_payment(order_id, amount, description="", customer=None, metadata=Non
     }
     if customer:
         body["customer"] = {k: v for k, v in customer.items() if v}
+        # The player is signed in to Turflet, so we vouch for them: YOUPI's checkout skips its own mobile
+        # + WhatsApp OTP step and opens straight on the payment screen. Needs a 10-digit phone number;
+        # without one the checkout falls back to asking the player to verify.
+        if len(str(customer.get("phoneNumber") or "")) == 10:
+            body["customerVerified"] = True
     try:
         resp = requests.post(_url("/api/v1/payments"), json=body,
                              headers=_headers(**{"Idempotency-Key": order_id}), timeout=TIMEOUT)

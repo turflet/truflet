@@ -5,7 +5,7 @@
 from datetime import datetime, timedelta
 from unittest import mock
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -17,6 +17,7 @@ from venues.models import Amenity, Area, City, Court, Sport, Venue, VenueSport
 from .models import Lobby, LobbyMember
 
 
+@override_settings(UPI_CHECKOUT="")  # these flows use the instant gateway; LobbyYoupiTests covers YOUPI
 class MatchTestCase(TestCase):
     def setUp(self):
         AppConfig.objects.create(pk=1, split_fee=10, convenience_fee=40)
@@ -416,3 +417,85 @@ class ReRequestTests(MatchTestCase):
         self.assertEqual(again.status_code, 201, again.data)
         self.assertEqual((again.data["id"], again.data["status"]), (rid, "pending"))
         self.assertEqual(self.api(self.host).post(f"/api/v1/lobbies/{lb['id']}/requests/{rid}/approve/").status_code, 200)
+
+
+# ------------------------------------------------------------------ UPI through the YOUPI checkout
+import hashlib  # noqa: E402
+import hmac  # noqa: E402
+import json  # noqa: E402
+
+
+from payments.models import Payment  # noqa: E402
+
+YOUPI = dict(UPI_CHECKOUT="youpi", YOUPI_API_URL="https://gw.test", YOUPI_MERCHANT_ID="m-1",
+             YOUPI_MERCHANT_KEY="key", YOUPI_WEBHOOK_SECRET="whsec")
+
+
+@override_settings(**YOUPI)
+class LobbyYoupiTests(MatchTestCase):
+    def setUp(self):
+        super().setUp()
+        self.created = 0
+        patcher = mock.patch("payments.youpi.create_payment", side_effect=self._fake_create)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _fake_create(self, order_id, amount, **kw):
+        self.created += 1
+        return {"paymentId": f"pay-{self.created}", "orderId": order_id, "status": "INITIATED",
+                "checkoutUrl": f"https://pay.test/checkout/pay-{self.created}"}
+
+    def webhook(self, p, event="SUCCESS", utr="999988887777"):
+        body = json.dumps({"event": event, "paymentId": p.provider_payment_id, "orderId": p.order_id,
+                           "amountPaise": p.amount * 100, "method": "UPI", "utr": utr}).encode()
+        sig = "sha256=" + hmac.new(b"whsec", body, hashlib.sha256).hexdigest()
+        return self.client.post("/api/v1/payments/youpi/webhook/", data=body, content_type="application/json",
+                                HTTP_X_GATEWAY_SIGNATURE=sig)
+
+    def member(self, lb, user):
+        return LobbyMember.objects.get(lobby_id=lb["id"], user=user)
+
+    def test_share_opens_checkout_and_settles_on_webhook(self):
+        lb = self.create()
+        r = self.api(self.friend).post(f"/api/v1/lobbies/{lb['id']}/pay/", {"method": "upi"}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["payment"]["checkout_url"], "https://pay.test/checkout/pay-1")
+        m = self.member(lb, self.friend)
+        self.assertEqual(m.status, "pending")
+        p = Payment.objects.get()
+        self.assertEqual((p.purpose, p.reference_id, p.amount), ("lobby_share", m.pk, m.amount_due))
+        self.webhook(p)
+        self.webhook(p)  # duplicate delivery is harmless
+        m.refresh_from_db()
+        p.refresh_from_db()
+        self.assertEqual((m.status, m.escrow, m.payment_method, m.transaction_id), ("confirmed", "held", "upi", "999988887777"))
+        self.assertEqual((p.status, p.refund_status), ("success", ""))
+
+    def test_polling_settles_share(self):
+        lb = self.create()
+        self.api(self.friend).post(f"/api/v1/lobbies/{lb['id']}/pay/", {"method": "upi"}, format="json")
+        p = Payment.objects.get()
+        status = {"status": "SUCCESS", "paymentId": p.provider_payment_id, "orderId": p.order_id,
+                  "amountPaise": str(p.amount * 100), "method": "UPI"}
+        with mock.patch("payments.youpi.get_payment", return_value=status):
+            r = self.api(self.friend).get(f"/api/v1/lobbies/{lb['id']}/payment/")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["payment"]["status"], "success")
+        self.assertEqual(self.member(lb, self.friend).status, "confirmed")
+
+    def test_wallet_share_still_instant(self):
+        lb = self.create()
+        User.objects.filter(pk=self.friend.pk).update(wallet_balance=5000)
+        r = self.api(self.friend).post(f"/api/v1/lobbies/{lb['id']}/pay/", {"method": "wallet"}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertNotIn("payment", r.data)
+        self.assertEqual(self.member(lb, self.friend).status, "confirmed")
+
+    def test_late_share_after_window_is_flagged_for_refund(self):
+        lb = self.create()
+        self.api(self.friend).post(f"/api/v1/lobbies/{lb['id']}/pay/", {"method": "upi"}, format="json")
+        LobbyMember.objects.filter(lobby_id=lb["id"], user=self.friend).update(status="removed")
+        p = Payment.objects.get()
+        self.webhook(p)
+        p.refresh_from_db()
+        self.assertEqual((p.status, p.refund_status), ("success", "pending"))

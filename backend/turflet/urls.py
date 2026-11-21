@@ -60,6 +60,7 @@ api = [
     path("lobbies/<int:pk>/request/", community.lobby_request),
     path("lobbies/<int:pk>/messages/", community.lobby_messages),
     path("lobbies/<int:pk>/pay/", community.lobby_pay),
+    path("lobbies/<int:pk>/payment/", community.lobby_payment),
     path("lobbies/<int:pk>/requests/", community.lobby_requests),
     path("lobbies/<int:pk>/requests/<int:rid>/", community.request_detail),
     path("lobbies/<int:pk>/requests/<int:rid>/messages/", community.request_messages),
