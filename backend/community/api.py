@@ -8,6 +8,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from bookings.services import fmt_hour
+from payments import service as payments
 from venues.models import Area, City, Venue
 
 from . import services
@@ -388,8 +389,23 @@ def lobby_pay(request, pk):
     lobby = _room(request, pk)
     if request.method == "GET":
         return Response(services.checkout(lobby, request.user))
-    services.pay_share(lobby, request.user, request.data.get("method", "upi"), request.data.get("upi_id", ""))
+    method = request.data.get("method", "upi")
+    if method == "upi" and payments.upi_checkout_enabled():
+        # UPI goes through the YOUPI checkout: the share is settled only when the gateway reports the money.
+        # The app opens payment.checkout_url, then polls GET lobbies/<pk>/payment/.
+        payment = services.start_share_upi(lobby, request.user)
+        return Response({**lobby_detail(request, _lobby(pk)), "payment": payment})
+    services.pay_share(lobby, request.user, method, request.data.get("upi_id", ""))
     return Response(lobby_detail(request, _lobby(pk)))
+
+
+@api_view(["GET"])
+@permission_classes([Auth])
+def lobby_payment(request, pk):
+    """The lobby with my latest UPI payment for it (refreshed from the gateway while still pending)."""
+    lobby = _room(request, pk)
+    payment = services.upi_payment_status(lobby, request.user)
+    return Response({**lobby_detail(request, _lobby(pk)), "payment": payment})
 
 
 @api_view(["POST"])
@@ -413,7 +429,16 @@ def lobby_action(request, pk, action):
         services.decline_invite(lobby, me)
         message = "Invite declined."
     elif action == "pay-balance":
-        services.pay_balance(lobby, me, d.get("method", "upi"), d.get("upi_id", ""))
+        method = d.get("method", "upi")
+        if method == "upi" and payments.upi_checkout_enabled():
+            payment = services.start_balance_upi(lobby, me)
+            if payment is not None:
+                data = lobby_detail(request, _lobby(pk))
+                data["payment"] = payment
+                data["message"] = "Finish paying in your UPI app."
+                return Response(data)
+        else:
+            services.pay_balance(lobby, me, method, d.get("upi_id", ""))
         message = "Balance paid — the turf is locked."
     elif action == "switch-slot":
         services.switch_slot(lobby, me, d)

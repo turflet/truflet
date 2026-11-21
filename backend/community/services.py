@@ -611,18 +611,29 @@ def checkout(lobby, user):
     }
 
 
-@transaction.atomic
-def pay_share(lobby, user, method, upi_id=""):
-    lobby = _locked(lobby)
-    sync_one(lobby)
+def _pending_share(lobby, user):
+    """The caller's member row while they still owe their share (lobby already locked and synced)."""
     m = LobbyMember.objects.select_for_update().filter(lobby=lobby, user=user).first()
     if not m or m.status != "pending":
         raise ValidationError({"payment": "Your payment window has closed — ask the host to approve you again."
                                           if m and m.status == "removed" else "Nothing to pay for this match."})
     if lobby.status not in ("crowdfunding", "locked"):
         raise ValidationError({"payment": "This match isn't collecting payments."})
-    amount = m.amount_due
-    txn = _charge(user, amount, method, upi_id, f"LB-{lobby.pk}-{m.pk}")
+    return m
+
+
+@transaction.atomic
+def pay_share(lobby, user, method, upi_id=""):
+    lobby = _locked(lobby)
+    sync_one(lobby)
+    m = _pending_share(lobby, user)
+    txn = _charge(user, m.amount_due, method, upi_id, f"LB-{lobby.pk}-{m.pk}")
+    return _settle_share(lobby, m, method, txn)
+
+
+def _settle_share(lobby, m, method, txn):
+    """Marks a locked, pending member paid into escrow and runs what their payment unlocks."""
+    user = m.user
     m.share_paid, m.fee_paid = m.share_due, m.fee_due
     m.status, m.escrow, m.pay_by, m.paid_at = "confirmed", "held", None, timezone.now()
     m.payment_method, m.transaction_id = method, txn
@@ -676,28 +687,126 @@ def _lock_from_pool(lobby):
     return True
 
 
-@transaction.atomic
-def pay_balance(lobby, host, method, upi_id=""):
-    """Crowdfund alert option: the host pays whatever the pool is missing and the slot is booked now."""
-    lobby = _locked(lobby)
+def _balance_due(lobby, host):
+    """What the host must pay to book a crowdfunding lobby now (lobby already locked)."""
     if lobby.host_id != host.pk or lobby.status != "crowdfunding":
         raise ValidationError({"lobby": "Only the host of a crowdfunding lobby can pay the balance."})
     if not _slot_free(lobby):
         raise ValidationError({"lobby": "This slot was booked by another group — switch to another slot."})
-    balance = max(0, lobby.turf_price - lobby.pooled())
+    return max(0, lobby.turf_price - lobby.pooled())
+
+
+@transaction.atomic
+def pay_balance(lobby, host, method, upi_id=""):
+    """Crowdfund alert option: the host pays whatever the pool is missing and the slot is booked now."""
+    lobby = _locked(lobby)
+    balance = _balance_due(lobby, host)
+    txn = _charge(host, balance, method, upi_id, f"LB-{lobby.pk}-balance") if balance else ""
+    return _settle_balance(lobby, balance, method, txn)
+
+
+def _settle_balance(lobby, balance, method, txn):
     h = lobby.members.select_for_update().get(tag="host")
     if balance:
-        txn = _charge(host, balance, method, upi_id, f"LB-{lobby.pk}-balance")
         h.share_paid += balance
         h.payment_method, h.transaction_id = method, txn
     h.status, h.escrow, h.paid_at, h.pay_by = "confirmed", "held", timezone.now(), None
     h.share_due, h.fee_due = h.share_paid, h.fee_paid
     h.save()
-    post(lobby, f"{first_name(host)} paid the ₹{balance} balance")
+    post(lobby, f"{first_name(lobby.host)} paid the ₹{balance} balance")
     lobby.booking_mode = "book_recover"  # players who still pay now recover the host's money
     lobby.save(update_fields=["booking_mode", "updated_at"])
     _lock_from_pool(lobby)
     return lobby
+
+
+# ------------------------------------------------------------------ UPI through the YOUPI checkout
+# The member (or host balance) is settled only when the gateway reports the money: see on_payment_succeeded.
+
+UPI_CHECKOUT_MINUTES = 10  # YOUPI's 5-minute payment window plus time for the bank SMS to be matched
+
+
+@transaction.atomic
+def start_share_upi(lobby, user):
+    """Opens (or reuses) a YOUPI checkout for the caller's share. Returns the payment dict."""
+    lobby = _locked(lobby)
+    sync_one(lobby)
+    m = _pending_share(lobby, user)
+    if m.pay_by:  # don't drop a player who is mid-payment
+        m.pay_by = max(m.pay_by, timezone.now() + timedelta(minutes=UPI_CHECKOUT_MINUTES))
+        m.save(update_fields=["pay_by", "updated_at"])
+    payment = payments.start_upi_checkout(
+        user, "lobby_share", m.pk, f"LB-{lobby.pk}-{m.pk}", m.amount_due,
+        description=f"{lobby.venue.name} · {when(lobby)} · match share",
+    )
+    return payment.as_dict()
+
+
+@transaction.atomic
+def start_balance_upi(lobby, host):
+    """Opens a YOUPI checkout for the host's balance. Returns the payment dict, or None if nothing was due."""
+    lobby = _locked(lobby)
+    balance = _balance_due(lobby, host)
+    if not balance:
+        _settle_balance(lobby, 0, "upi", "")
+        return None
+    payment = payments.start_upi_checkout(
+        host, "lobby_balance", lobby.pk, f"LB-{lobby.pk}-BAL", balance,
+        description=f"{lobby.venue.name} · {when(lobby)} · pool balance",
+    )
+    return payment.as_dict()
+
+
+def upi_payment_status(lobby, user):
+    """The caller's latest lobby UPI payment, refreshed from the gateway while pending (dict or None)."""
+    from payments.models import Payment
+
+    m = LobbyMember.objects.filter(lobby=lobby, user=user).first()
+    q = Q(purpose="lobby_balance", reference_id=lobby.pk)
+    if m:
+        q |= Q(purpose="lobby_share", reference_id=m.pk)
+    payment = Payment.objects.filter(q, user=user).first()
+    return payments.sync_payment(payment).as_dict() if payment else None
+
+
+@transaction.atomic
+def on_payment_succeeded(sender, payment, **kwargs):
+    """Receiver for `payments.payment_succeeded`: True when this payment settles (or settled) the share/balance."""
+    purpose = payment["purpose"]
+    if purpose not in ("lobby_share", "lobby_balance"):
+        return None
+    ours = (payment["gateway_id"], payment["utr"])
+    if purpose == "lobby_share":
+        m = LobbyMember.objects.filter(pk=payment["reference_id"]).first()
+        if m is None:
+            return False
+        lobby = _locked(m.lobby)
+        m = LobbyMember.objects.select_for_update().get(pk=m.pk)
+        if m.status == "confirmed" and m.payment_method == "upi" and m.transaction_id in ours:
+            if m.transaction_id != payment["transaction_id"]:
+                m.transaction_id = payment["transaction_id"]  # bank UTR arrived after the gateway id
+                m.save(update_fields=["transaction_id", "updated_at"])
+            return True
+        if m.status != "pending" or lobby.status not in ("crowdfunding", "locked") or m.amount_due != payment["amount"]:
+            return False  # window closed, match ended or price changed: the money goes back
+        _settle_share(lobby, m, "upi", payment["transaction_id"])
+        return True
+    lobby = Lobby.objects.filter(pk=payment["reference_id"]).first()
+    if lobby is None:
+        return False
+    lobby = _locked(lobby)
+    h = lobby.members.filter(tag="host").first()
+    if lobby.status != "crowdfunding":
+        if h and h.payment_method == "upi" and h.transaction_id in ours:
+            if h.transaction_id != payment["transaction_id"]:
+                h.transaction_id = payment["transaction_id"]
+                h.save(update_fields=["transaction_id", "updated_at"])
+            return True
+        return False
+    if not _slot_free(lobby) or max(0, lobby.turf_price - lobby.pooled()) != payment["amount"]:
+        return False
+    _settle_balance(lobby, payment["amount"], "upi", payment["transaction_id"])
+    return True
 
 
 # ------------------------------------------------------------------ host controls

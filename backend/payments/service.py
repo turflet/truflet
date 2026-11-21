@@ -17,6 +17,8 @@ from typing import Protocol
 from django.conf import settings
 from django.db.models import F
 
+from . import checkout
+from .checkout import payment_succeeded, start_upi_checkout, sync_payment, upi_checkout_enabled  # noqa: F401
 from .gateways import ChargeResult, get_gateway, make_txn_id
 
 WALLET = "wallet"
@@ -69,6 +71,8 @@ class LocalPaymentService:
             if user_id:
                 self.credit_wallet(user_id, amount)
             return True
+        if checkout.mark_refund_due(transaction_id, amount):
+            return True  # a YOUPI UPI payment: queued for the venue to refund by hand
         return get_gateway().refund(amount, transaction_id)
 
     def wallet_balance(self, user_id):

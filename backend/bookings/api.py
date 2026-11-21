@@ -10,6 +10,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from core.api import image_url
+from payments import service as payments
 from venues.models import Venue, VenueSport
 
 from . import services
@@ -187,6 +188,9 @@ def booking_detail(request, pk):
     viewer = Q(user=request.user) | Q(lobby__members__user=request.user, lobby__members__status="confirmed")
     b = get_object_or_404(Booking.objects.filter(viewer).distinct()
                           .select_related("venue__area__city", "court", "sport", "user"), pk=pk)
+    if b.user_id == request.user.id and b.status in ("held", "expired") and b.payment_method == "upi" \
+            and payments.upi_checkout_enabled():
+        services.upi_payment_status(b)  # a UPI payment may have landed while the webhook couldn't reach us
     Booking.sync_statuses(Booking.objects.filter(pk=b.pk))
     b.refresh_from_db()
     return Response(booking_payload(request, b))
@@ -202,8 +206,22 @@ def apply_coupon(request, pk):
 @api_view(["POST"])
 @permission_classes([Auth])
 def pay(request, pk):
-    b = services.pay(_mine(request, pk), request.data.get("method", "upi"), request.data.get("upi_id", ""))
+    method = request.data.get("method", "upi")
+    if method == "upi" and payments.upi_checkout_enabled():
+        # UPI goes through the YOUPI checkout: the booking stays held until the gateway reports the money.
+        # The app opens payment.checkout_url, then polls GET bookings/<pk>/payment/.
+        b, payment = services.start_upi_payment(_mine(request, pk))
+        return Response({**booking_payload(request, b), "payment": payment})
+    b = services.pay(_mine(request, pk), method, request.data.get("upi_id", ""))
     return Response(booking_payload(request, b))
+
+
+@api_view(["GET"])
+@permission_classes([Auth])
+def payment_status(request, pk):
+    """The booking with its latest UPI payment (refreshed from the gateway while still pending)."""
+    b, payment = services.upi_payment_status(_mine(request, pk))
+    return Response({**booking_payload(request, b), "payment": payment})
 
 
 @api_view(["GET", "POST"])

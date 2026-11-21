@@ -71,6 +71,9 @@ class LobbyRepository {
   Future<Json> pay(int id, {required String method, String upiId = ''}) async =>
       asMap(await _api.post('/lobbies/$id/pay/', {'method': method, 'upi_id': upiId}));
 
+  /// The lobby plus my latest UPI `payment` (pending | success | failed | expired | cancelled).
+  Future<Json> paymentStatus(int id) async => asMap(await _api.get('/lobbies/$id/payment/'));
+
   /// pay-balance | switch-slot | unpublish | cancel | leave | checkin | report. Returns the lobby + `message`.
   Future<Json> action(int id, String action, [Json body = const {}]) async =>
       asMap(await _api.post('/lobbies/$id/$action/', body));

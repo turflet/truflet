@@ -11,6 +11,7 @@ from community import api as community
 from core import api as core
 from core import views as core_pages
 from notifications import api as notifications
+from payments import api as payments_api
 from venues import api as venues
 
 api = [
@@ -45,6 +46,9 @@ api = [
     path("bookings/<int:pk>/", bookings.booking_detail),
     path("bookings/<int:pk>/coupon/", bookings.apply_coupon),
     path("bookings/<int:pk>/pay/", bookings.pay),
+    path("bookings/<int:pk>/payment/", bookings.payment_status),
+    # payment gateway callbacks (server-to-server, signed)
+    path("payments/youpi/webhook/", payments_api.youpi_webhook),
     path("bookings/<int:pk>/cancel/", bookings.cancel),
     path("bookings/<int:pk>/reschedule/", bookings.reschedule),
     # matches (lobbies)
@@ -56,6 +60,7 @@ api = [
     path("lobbies/<int:pk>/request/", community.lobby_request),
     path("lobbies/<int:pk>/messages/", community.lobby_messages),
     path("lobbies/<int:pk>/pay/", community.lobby_pay),
+    path("lobbies/<int:pk>/payment/", community.lobby_payment),
     path("lobbies/<int:pk>/requests/", community.lobby_requests),
     path("lobbies/<int:pk>/requests/<int:rid>/", community.request_detail),
     path("lobbies/<int:pk>/requests/<int:rid>/messages/", community.request_messages),

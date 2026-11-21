@@ -1,3 +1,4 @@
+from django.conf import settings
 from rest_framework import permissions, serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -70,6 +71,8 @@ def app_config(request):
         },
         "policy_updated_on": c.policy_updated_on.strftime("%-d %b %Y") if c.policy_updated_on else None,
         "app_version": c.app_version,
+        # true: UPI opens the gateway checkout (pick any UPI app there), so the app doesn't ask for a UPI ID
+        "upi_checkout": settings.UPI_CHECKOUT == "youpi",
     })
 
 

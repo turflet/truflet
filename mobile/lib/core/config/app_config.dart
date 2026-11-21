@@ -37,7 +37,7 @@ class AppConfig {
         ? _apiOverride
         : switch (env) {
             // Android emulators reach the host machine on 10.0.2.2.
-            AppEnvironment.local => Platform.isAndroid ? 'http://10.0.2.2:8000/api/v1' : 'http://127.0.0.1:8000/api/v1',
+            AppEnvironment.local => Platform.isAndroid ? 'http://192.168.1.2:8000/api/v1' : 'http://127.0.0.1:8000/api/v1',
             AppEnvironment.stage => _stageApi,
             AppEnvironment.prod => _prodApi,
           };
