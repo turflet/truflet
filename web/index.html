@@ -8,8 +8,12 @@
     <meta name="robots" content="index, follow, max-image-preview:large" />
     <link rel="canonical" href="https://www.truflet.in/" />
 
-    <link rel="icon" type="image/png" href="/images/icon_rounded.png" />
-    <link rel="apple-touch-icon" href="/images/icon.png" />
+    <!-- Favicons: Google Search needs a square icon in multiples of 48px at a stable, crawlable URL. -->
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192x192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#143D2B" />
     <meta name="application-name" content="Turflet" />
@@ -43,6 +47,7 @@
             "@type": "Organization",
             "@id": "https://www.truflet.in/#org",
             "name": "Turflet",
+            "alternateName": ["Truflet", "truflet.in"],
             "url": "https://www.truflet.in/",
             "logo": "https://www.truflet.in/images/icon.png"
           },
@@ -50,6 +55,7 @@
             "@type": "WebSite",
             "@id": "https://www.truflet.in/#website",
             "name": "Turflet",
+            "alternateName": ["Truflet", "truflet.in"],
             "url": "https://www.truflet.in/",
             "inLanguage": "en-IN",
             "publisher": { "@id": "https://www.truflet.in/#org" }
@@ -57,6 +63,7 @@
           {
             "@type": "WebApplication",
             "name": "Turflet",
+            "alternateName": ["Truflet", "truflet.in"],
             "url": "https://www.truflet.in/",
             "applicationCategory": "SportsApplication",
             "operatingSystem": "Web, Android, iOS",
@@ -72,7 +79,7 @@
     <div id="root"></div>
     <noscript>
       <main style="max-width:720px;margin:40px auto;padding:0 16px;font-family:system-ui,sans-serif;color:#143D2B">
-        <h1>Turflet — book turfs and sports courts near you</h1>
+        <h1>Turflet (truflet.in) — book turfs and sports courts near you</h1>
         <p>Find and book football turfs, box cricket grounds, badminton, pickleball, tennis and basketball courts. See live slots and prices, split the cost with your squad, and walk in with a QR pass.</p>
         <ul>
           <li><a href="/home">Explore turfs and courts near you</a></li>
