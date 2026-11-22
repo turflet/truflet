@@ -26,7 +26,7 @@ class AppConfig {
 
   const AppConfig({required this.environment, required this.apiBaseUrl, required this.logNetwork});
 
-  static const _prodApi = 'https://truflet.vercel.app/api/v1';
+  static const _prodApi = 'https://truflet-u8t9.vercel.app/api/v1';
   static const _stageApi = String.fromEnvironment('STAGE_API_BASE', defaultValue: 'https://truflet-stage.vercel.app/api/v1');
 
   /// `--dart-define=API_BASE=...` overrides the URL for any environment (used by the offline tests).

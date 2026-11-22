@@ -8,7 +8,7 @@
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 
-export const API_BASE = import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? 'http://127.0.0.1:8000/api/v1' : 'https://truflet.vercel.app/api/v1');
+export const API_BASE = import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? 'http://127.0.0.1:8000/api/v1' : 'https://truflet-u8t9.vercel.app/api/v1');
 
 export class ApiError extends Error {
   status;
