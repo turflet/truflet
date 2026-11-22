@@ -89,11 +89,9 @@ export default function Explore() {
     [app.areaId, app.lat, app.lng, sportId, sort, q, filters],
   );
 
+  // No area picked yet (a first visit straight to /home, or a search-engine crawler): list every venue
+  // instead of bouncing to /location, so the page has real content and can be indexed.
   useEffect(() => {
-    if (app.areaId == null) {
-      nav('/location?first=1', { replace: true });
-      return;
-    }
     load();
     venueRepo.amenities().then(setAmenities, () => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,7 +146,7 @@ export default function Explore() {
   const offer = asMap(app.config.offer);
   const fc = filterCount(filters);
   const openBoard = () => nav(`/lobbies?area=${app.areaId}&city=${encodeURIComponent(app.cityName)}`);
-  const city = app.cityName || app.areaName;
+  const city = app.cityName || app.areaName || 'Choose your location';
 
   const sportChips = (
     <div className="hscroll" style={{ gap: 12, padding: desktop ? '2px 0 8px' : '0 20px' }}>
