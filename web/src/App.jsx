@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { routeSeo, useSeo } from './lib/seo';
 import { SessionProvider, useSession } from './app/session';
 import { OverlayProvider } from './ui/overlay';
 import { Spinner } from './ui/kit';
@@ -34,6 +35,12 @@ function Start() {
   return <Navigate to="/home" replace />;
 }
 
+/** Title, description, canonical and robots for the current route (venue pages set their own). */
+function RouteSeo() {
+  useSeo(routeSeo(useLocation().pathname));
+  return null;
+}
+
 function Boot({ children }) {
   const { booted } = useSession();
   const [splash, setSplash] = useState(() => !NO_SPLASH.includes(window.location.pathname.replace(/\/$/, '')));
@@ -49,6 +56,7 @@ function Boot({ children }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <RouteSeo />
       <SessionProvider>
         <OverlayProvider>
           <Boot>

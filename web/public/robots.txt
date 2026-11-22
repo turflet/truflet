@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /login
+Disallow: /location
+Disallow: /book
+Disallow: /payment/
+Disallow: /booking-confirmed/
+Disallow: /tickets/
+Disallow: /bookings
+Disallow: /notifications
+Disallow: /profile
+Disallow: /saved
+Disallow: /squad
+Disallow: /matches
+
+Sitemap: https://truflet.in/sitemap.xml

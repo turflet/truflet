@@ -28,6 +28,7 @@ import { Shell } from '../../app/Shell';
 import { asList, errText } from '../../lib/api';
 import { venueRepo } from '../../lib/repos';
 import { inr } from '../../lib/format';
+import { SITE_URL, useSeo } from '../../lib/seo';
 import { C, d, hex, shadow, t } from '../../theme';
 import { useData, useIsDesktop } from '../../ui/hooks';
 import { useOverlay } from '../../ui/overlay';
@@ -52,6 +53,46 @@ export const openMaps = (v) => {
   window.open(`https://www.google.com/maps/search/?api=1&query=${q}`, '_blank', 'noopener');
 };
 
+/** Search-engine tags + SportsActivityLocation structured data for a venue page. */
+function venueSeo(v) {
+  const sports = (v.venue_sports ?? []).map((s) => s.meta || s.name);
+  const place = [v.area, v.city].filter(Boolean).join(', ');
+  const what = sports.length ? sports.join(', ') : 'sports';
+  const image = v.photos?.[0] || v.image || v.venue_sports?.[0]?.image || undefined;
+  const path = `/venues/${v.id}`;
+  const description =
+    (v.about && v.about.slice(0, 155)) ||
+    `Book ${what} at ${v.name}${place ? `, ${place}` : ''}${v.price_from ? ` from ₹${v.price_from}/hr` : ''}. Check live slot availability and book instantly on Turflet.`;
+  return {
+    title: `${v.name}${place ? ` – ${place}` : ''} | Book ${sports[0] || 'Turf'} Online`,
+    description,
+    path,
+    image,
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'SportsActivityLocation',
+      name: v.name,
+      url: SITE_URL + path,
+      ...(image && { image }),
+      ...(v.phone && { telephone: v.phone }),
+      address: { '@type': 'PostalAddress', streetAddress: v.address, addressLocality: v.city, addressCountry: 'IN' },
+      ...(v.lat != null && v.lng != null && { geo: { '@type': 'GeoCoordinates', latitude: v.lat, longitude: v.lng } }),
+      ...(v.price_from && { priceRange: `₹${v.price_from}+` }),
+      ...(v.opens_at != null &&
+        v.closes_at != null && {
+          openingHoursSpecification: {
+            '@type': 'OpeningHoursSpecification',
+            dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+            opens: `${String(v.opens_at).padStart(2, '0')}:00`,
+            closes: v.closes_at >= 24 ? '23:59' : `${String(v.closes_at).padStart(2, '0')}:00`,
+          },
+        }),
+      ...(v.review_count > 0 && { aggregateRating: { '@type': 'AggregateRating', ratingValue: v.rating, reviewCount: v.review_count } }),
+      ...(v.amenities?.length && { amenityFeature: v.amenities.map((a) => ({ '@type': 'LocationFeatureSpecification', name: a.label || a.name || a, value: true })) }),
+    },
+  };
+}
+
 export default function VenueDetails() {
   const id = Number(useParams().venueId);
   const app = useSession();
@@ -71,6 +112,7 @@ export default function VenueDetails() {
   }, [id]);
   const [photo, setPhoto] = useState(0);
   const [sportIdx, setSportIdx] = useState(0);
+  useSeo(v ? venueSeo(v) : null);
 
   if (error)
     return (

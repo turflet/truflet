@@ -1,17 +1,9 @@
 /** Shared frame for the public legal pages (/privacy, /delete-account): green header, overlapping card.
  *  These pages are linked from the Play Store listing, so they work without signing in and skip the splash. */
-import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { C, d, t } from '../../theme';
 
-export function LegalLayout({ title, sub, docTitle, children }) {
-  useEffect(() => {
-    const prev = document.title;
-    document.title = `${docTitle || title} · Turflet`;
-    return () => {
-      document.title = prev;
-    };
-  }, [title, docTitle]);
+export function LegalLayout({ title, sub, children }) {
   return (
     <div style={{ minHeight: '100vh', background: C.ground, color: C.ink }}>
       <header style={{ background: C.brand, color: '#fff', padding: '40px 16px 76px' }}>

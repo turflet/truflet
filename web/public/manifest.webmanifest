@@ -1,0 +1,9 @@
+{
+  "name": "Turflet — Book Turfs & Sports Courts",
+  "short_name": "Turflet",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#143D2B",
+  "theme_color": "#143D2B",
+  "icons": [{ "src": "/images/icon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" }]
+}
