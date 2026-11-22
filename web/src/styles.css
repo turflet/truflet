@@ -33,7 +33,16 @@ img { display: block; }
 input, textarea { border: 0; outline: none; background: transparent; width: 100%; min-width: 0; }
 input::placeholder, textarea::placeholder { color: var(--muted); }
 ::selection { background: rgba(242, 85, 44, 0.25); }
-:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; }
+/* Keyboard focus ring for buttons/links only. Text fields sit inside their own rounded boxes, so the
+   browser outline would draw a square inside them. */
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+input:focus, input:focus-visible, textarea:focus, textarea:focus-visible, select:focus, select:focus-visible, [contenteditable]:focus-visible { outline: none; box-shadow: none; }
+/* Chrome/Safari autofill paints its own yellow box behind saved emails/phones. */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ink);
+  -webkit-box-shadow: 0 0 0 1000px transparent inset;
+  transition: background-color 9999s ease-out 0s;
+}
 
 /* ink-like press feedback, standing in for Flutter's InkWell */
 .tap { position: relative; transition: transform 120ms ease, filter 120ms ease, box-shadow 160ms ease, background-color 160ms ease; }
