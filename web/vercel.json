@@ -1,18 +1,35 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "redirects": [
-    { "source": "/(.*)", "has": [{ "type": "host", "value": "www.truflet.in" }], "destination": "https://truflet.in/$1", "permanent": true }
-  ],
   "headers": [
     {
       "source": "/(.*)",
-      "has": [{ "type": "host", "value": "(?<sub>.*)\\.vercel\\.app" }],
-      "headers": [{ "key": "X-Robots-Tag", "value": "noindex" }]
+      "has": [
+        {
+          "type": "host",
+          "value": "(?<sub>.*)\\.vercel\\.app"
+        }
+      ],
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
+        }
+      ]
     },
     {
       "source": "/assets/(.*)",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
     }
   ],
-  "rewrites": [{ "source": "/((?!sitemap\\.xml|robots\\.txt|manifest\\.webmanifest).*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/((?!sitemap\\.xml|robots\\.txt|manifest\\.webmanifest).*)",
+      "destination": "/index.html"
+    }
+  ]
 }
