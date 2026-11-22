@@ -2,7 +2,7 @@
 // fetched from the API. If the API is unreachable the static pages are still written.
 import { writeFileSync } from 'node:fs';
 
-const SITE = 'https://truflet.in';
+const SITE = 'https://www.truflet.in';
 const API = process.env.VITE_API_BASE || 'https://truflet-u8t9.vercel.app/api/v1';
 const today = new Date().toISOString().slice(0, 10);
 
