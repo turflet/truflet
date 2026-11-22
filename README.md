@@ -4,7 +4,7 @@ A turf and court booking app: a Flutter mobile app built from the "Turf Booking 
 
 ```
 traffy/
-├── backend/   Django 5.2 + DRF + JWT · PostgreSQL · Cloudinary · admin panel (/admin-panel/)
+├── backend/   Django 5.2 + DRF + JWT · PostgreSQL · Cloudinary · JSON API
 └── mobile/    Flutter app (Android + iOS) · all 19 screens from the design
 ```
 
@@ -22,7 +22,7 @@ python manage.py seed_demo              # optional: sample venues, players and b
 python manage.py runserver 0.0.0.0:8000
 ```
 
-- Admin panel: http://localhost:8000/admin-panel/ (sign in with the superuser's email and password)
+- Admin dashboard: the React web app at http://localhost:5173/admin (`cd web && npm run dev`; sign in with the superuser's email and the emailed code)
 - Raw Django admin, as a fallback: http://localhost:8000/django-admin/
 - API base: http://localhost:8000/api/v1/
 
@@ -87,9 +87,9 @@ Built from `Turf-Platform-Product-Flow-and-Solutions.docx`. Tabs: Explore · **M
 cd backend && DATABASE_URL=sqlite:///test.sqlite3 python manage.py test community   # match flows end to end
 ```
 
-## 3. Admin panel (`/admin-panel/`)
+## 3. Admin dashboard (`web/` → `/admin`)
 
-Built with Django templates, Tailwind (CDN) and jQuery: live search and filters, AJAX toggles and deletes, drag-and-drop photo upload to Cloudinary, image previews, and global search.
+Part of the React web app (`web/src/admin`), backed by the JSON API in `backend/dashboard/api.py`. The old backend URLs (`/admin-panel/…`, `/privacy/`, `/delete-account/`) redirect to the web app: set `WEB_APP_URL` on the backend to its address.
 
 - **Dashboard**: today's bookings, monthly revenue chart, top venues, today's games, recent bookings
 - **Check-in desk**: scan or type the QR / booking ID to validate a ticket and check the player in
@@ -103,7 +103,7 @@ Built with Django templates, Tailwind (CDN) and jQuery: live search and filters,
 ### Turf owners (venue staff role)
 
 - An admin opens **People → Players & staff** and switches on **Turf owner** for a user, then sets that user as **Owner** on their venue(s).
-- The owner signs in at `/admin-panel/` with **"Turf owner? Sign in with an email code"**, so no password is needed.
+- The owner signs in at `/admin` on the web app with their email and a one-time code, so no password is needed.
 - Owners only see **their own grounds**: dashboard numbers, bookings (check in, complete, cancel with full refund, notes), the check-in desk, the slot board, courts, sports & pricing, photos, blocked slots and reviews. Players, coupons, content, settings and other venues are hidden and return 404.
 - Owners can onboard a new ground with **Add a ground**. It stays hidden in the app until an admin approves it by switching the venue to **Active**. Admins see a "waiting for approval" banner on the dashboard.
 - Demo after `seed_demo --reset`: turf owner **owner@turflet.app**, code **123456** (dev mode), owns the first venue.

@@ -174,7 +174,10 @@ PAYMENT_SERVICE = os.getenv("PAYMENT_SERVICE", "payments.service.LocalPaymentSer
 NOTIFICATION_SERVICE = os.getenv("NOTIFICATION_SERVICE", "notifications.service.LocalNotificationService")
 PUBLIC_APP_URL = os.getenv("PUBLIC_APP_URL", "turflet.app")
 
-LOGIN_URL = "dashboard:login"
+# The React web app (web/): player site + admin dashboard at /admin. The backend's /, /privacy/,
+# /delete-account/ and /admin-panel/ redirect here (the Play Store links point at the backend URLs).
+WEB_APP_URL = os.getenv("WEB_APP_URL", "http://localhost:5173").rstrip("/")
+LOGIN_URL = "admin:login"
 
 LOGGING = {
     "version": 1,
