@@ -16,7 +16,8 @@ from accounts.models import User
 from bookings.models import Booking, Coupon
 from community.models import JoinRequest, Lobby, LobbyMember
 from core.models import FAQ, PolicySection, RefundRule, SupportTicket
-from notifications.models import Notification  # admin panel reads the service's own tables directly
+from notifications.models import Notification
+from payments.models import Payment  # admin panel reads the service's own tables directly
 from venues.models import Amenity, Area, BlockedSlot, City, Court, Review, Sport, Venue, VenuePhoto, VenueSport
 
 INPUT = ("w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 "
@@ -216,6 +217,15 @@ RESOURCES = [
              [col("code"), col("description"), col("discount_type", "Type"), col("value"),
               col("first_booking_only", "First only", "bool"), col("is_active", "Active", "bool")],
              search=["code"], filters=["is_active"], icon="percent", section="Sales", toggles=["is_active"]),
+    Resource("payments", Payment, "UPI payments", ["refund_status", "refund_amount", "failure_reason"],
+             [col("order_id", "Order"), col("user"), col("reference", "For"), col("amount", "Amount", "money"),
+              col("status", "Status", "badge"), col("utr", "UTR"), col("refund_status", "Refund", "badge"),
+              col("created_at", "Created", "date")],
+             search=["order_id", "reference", "utr", "provider_payment_id", "user__email", "user__phone"],
+             filters=["status", "refund_status", "purpose"], icon="credit-card", section="Sales", can_create=False,
+             can_delete=False, select_related=["user"], ordering=["-created_at"],
+             help="YOUPI UPI checkouts. “Refund pending” means money arrived but the booking/match couldn't use it: "
+                  "send it back from the venue's UPI app, then set Refund to “Refunded”."),
     Resource("reviews", Review, "Reviews", ["venue", "rating", "comment"],
              [col("venue"), col("user"), col("rating"), col("comment"), col("created_at", "Date", "date")],
              filters=["venue"], icon="message-square", section="Sales", can_create=False,

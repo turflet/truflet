@@ -1,0 +1,92 @@
+@import '@fontsource/plus-jakarta-sans/400.css';
+@import '@fontsource/plus-jakarta-sans/500.css';
+@import '@fontsource/plus-jakarta-sans/600.css';
+@import '@fontsource/plus-jakarta-sans/700.css';
+@import '@fontsource/plus-jakarta-sans/800.css';
+
+:root {
+  --ink: #0c2419;
+  --muted: #5e6b63;
+  --ground: #f7f5ef;
+  --line: #e5e2d8;
+  --brand: #143d2b;
+  --coral: #f2552c;
+  --mint: #e9f0ea;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--ink);
+  background: var(--ground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { margin: 0; min-height: 100%; }
+body { background: var(--ground); }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; padding: 0; }
+button:disabled { cursor: default; }
+a { color: inherit; text-decoration: none; }
+img { display: block; }
+input, textarea { border: 0; outline: none; background: transparent; width: 100%; min-width: 0; }
+input::placeholder, textarea::placeholder { color: var(--muted); }
+::selection { background: rgba(242, 85, 44, 0.25); }
+:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; }
+
+/* ink-like press feedback, standing in for Flutter's InkWell */
+.tap { position: relative; transition: transform 120ms ease, filter 120ms ease, box-shadow 160ms ease, background-color 160ms ease; }
+.tap:active:not(:disabled) { transform: scale(0.98); filter: brightness(0.96); }
+@media (hover: hover) {
+  .tap:hover:not(:disabled) { filter: brightness(0.98); }
+  .lift { transition: transform 200ms ease, box-shadow 200ms ease; }
+  .lift:hover { transform: translateY(-3px); box-shadow: 0 16px 36px rgba(12, 36, 25, 0.12) !important; }
+  .lift:hover .zoom { transform: scale(1.05); }
+}
+.zoom { transition: transform 500ms ease; }
+
+.hscroll { display: flex; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+.hscroll::-webkit-scrollbar { display: none; }
+
+.clamp1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* skeleton shimmer */
+.sk { background: linear-gradient(90deg, #ebe8df 0%, #f4f2ec 50%, #ebe8df 100%); background-size: 200% 100%; animation: sk 1.3s ease-in-out infinite; }
+@keyframes sk { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 0.8s linear infinite; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes sheetUp { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes pop { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes toastIn { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.page { animation: fadeIn 220ms ease; }
+.rise { animation: rise 420ms cubic-bezier(.2,.8,.2,1) both; }
+
+@keyframes splashLoad { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+
+input[type='range'] { accent-color: var(--brand); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
+}
+
+/* Public legal pages (/privacy, /delete-account) */
+.legal h2 { font-size: 20px; letter-spacing: -0.4px; margin: 32px 0 8px; font-weight: 800; }
+.legal h2:first-child { margin-top: 0; }
+.legal h3 { font-size: 16px; margin: 18px 0 4px; font-weight: 700; }
+.legal p { margin: 10px 0; }
+.legal ul, .legal ol { padding-left: 20px; margin: 6px 0; }
+.legal li { margin: 4px 0; }
+.legal a { color: #F2552C; }
+.legal .muted { color: #5E6B63; font-size: 14px; }
+.legal table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+.legal th, .legal td { text-align: left; vertical-align: top; padding: 10px 8px; border-bottom: 1px solid #E5E2D8; }
+.legal th { font-weight: 700; }
+.legal .toc { columns: 2; font-size: 14px; margin: 8px 0 0; }
+.legal .toc a { color: #5E6B63; text-decoration: none; display: block; padding: 2px 0; }
+@media (max-width: 560px) { .legal .toc { columns: 1; } }

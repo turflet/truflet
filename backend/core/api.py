@@ -1,4 +1,8 @@
+import datetime
+
 from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 from rest_framework import permissions, serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -63,7 +67,7 @@ def app_config(request):
             "enabled": c.offer_enabled, "tag": c.offer_tag, "title": c.offer_title,
             "subtitle": c.offer_subtitle, "image": image_url(request, c.offer_image),
         },
-        "privacy_url": request.build_absolute_uri("/privacy/"),
+        "privacy_url": f"{settings.WEB_APP_URL}/privacy",
         "support": {
             "phone": c.support_phone, "email": c.support_email, "whatsapp": c.support_whatsapp,
             "chat_hours": c.chat_hours, "call_hours": c.call_hours, "email_sla": c.email_sla,
@@ -101,6 +105,77 @@ def policies(request):
         "privacy": [{"heading": s.heading, "items": s.items} for s in sections if s.kind == "privacy"],
         "terms": [{"heading": s.heading, "items": s.items} for s in sections if s.kind == "terms"],
     })
+
+
+# ------------------------------------------------------------------ legal pages (web app /privacy, /delete-account)
+
+PRIVACY_UPDATED = datetime.date(2026, 11, 13)
+
+
+def _support():
+    c = AppConfig.get()
+    phone = c.support_phone if c.support_phone and c.support_phone != "+918000000000" else ""  # skip the placeholder
+    return c.support_email, phone
+
+
+@api_view(["GET"])
+def legal(request):
+    """Contact details and last-updated date for the public privacy policy page."""
+    email, phone = _support()
+    return Response({"privacy_updated": PRIVACY_UPDATED.isoformat(), "email": email, "phone": phone})
+
+
+def _bad(message):
+    return Response({"message": message}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(["POST"])
+def deletion_code(request):
+    """Account deletion, step 1 (the Play Store "Delete account URL"): email a one-time code to the
+    address the person signs in with, proving they own the account."""
+    from accounts.mailer import send_login_code
+    from accounts.models import EmailOTP, User, normalize_email
+
+    email = normalize_email(request.data.get("email"))
+    try:
+        validate_email(email)
+    except DjangoValidationError:
+        return _bad("Enter a valid email address.")
+    if not User.objects.filter(email=email).exists():
+        return _bad("We couldn't find a Turflet account with this email.")
+    if EmailOTP.recently_sent(email):
+        return _bad("A code was just sent. Please wait 30 seconds before asking again.")
+    code = EmailOTP.issue(email, dev_mode=settings.OTP_DEV_MODE)
+    try:
+        send_login_code(email, code)
+    except Exception:
+        if not settings.OTP_DEV_MODE:
+            return _bad("We couldn't send the email right now. Please try again.")
+    return Response({"email": email})
+
+
+@api_view(["POST"])
+def deletion_confirm(request):
+    """Account deletion, step 2: check the code and record a deletion request for the team to process."""
+    from accounts.models import AccountDeletionRequest, EmailOTP, User, normalize_email
+
+    email = normalize_email(request.data.get("email"))
+    code = str(request.data.get("code", "")).strip()
+    reason = str(request.data.get("reason", ""))[:1000]
+    otp = EmailOTP.objects.filter(email=email, used=False).first() if email else None
+    if not otp or otp.is_expired():
+        return _bad("Code expired. Start again to get a new one.")
+    if otp.attempts >= EmailOTP.MAX_ATTEMPTS:
+        return _bad("Too many attempts. Start again to get a new code.")
+    if EmailOTP.hash(code) != otp.code_hash:
+        otp.attempts += 1
+        otp.save(update_fields=["attempts"])
+        return _bad("That code is incorrect.")
+    otp.used = True
+    otp.save(update_fields=["used"])
+    if not AccountDeletionRequest.objects.filter(email=email, status="pending").exists():
+        AccountDeletionRequest.objects.create(email=email, user=User.objects.filter(email=email).first(), reason=reason)
+    return Response({"email": email, "support_email": _support()[0]})
 
 
 # ------------------------------------------------------------------ support
