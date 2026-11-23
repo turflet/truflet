@@ -16,8 +16,9 @@ const Admin = lazy(() => import('./admin/AdminApp'));
 const Privacy = lazy(() => import('./features/legal/Privacy'));
 const DeleteAccount = lazy(() => import('./features/legal/DeleteAccount'));
 
-// Public pages opened straight from a link (Play Store listing, app) — no splash in front of them.
-const NO_SPLASH = ['/privacy', '/delete-account'];
+// Public pages opened straight from a link (Play Store listing, search results) — no splash in front of them.
+const NO_SPLASH = ['/privacy', '/delete-account', '/venues/', '/turfs/'];
+const skipSplash = (path) => NO_SPLASH.some((p) => (p.endsWith('/') ? path.startsWith(p) : path.replace(/\/$/, '') === p));
 
 function Loading() {
   return (
@@ -43,7 +44,7 @@ function RouteSeo() {
 
 function Boot({ children }) {
   const { booted } = useSession();
-  const [splash, setSplash] = useState(() => !NO_SPLASH.includes(window.location.pathname.replace(/\/$/, '')));
+  const [splash, setSplash] = useState(() => !skipSplash(window.location.pathname));
   const done = useCallback(() => setSplash(false), []);
   return (
     <>

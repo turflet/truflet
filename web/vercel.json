@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "cleanUrls": true,
   "headers": [
     {
       "source": "/(.*)",
@@ -29,7 +30,7 @@
   "rewrites": [
     {
       "source": "/((?!sitemap\\.xml|robots\\.txt|manifest\\.webmanifest|favicon|apple-touch-icon|images/|assets/).*)",
-      "destination": "/index.html"
+      "destination": "/app"
     }
   ]
 }

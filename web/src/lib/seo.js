@@ -2,12 +2,9 @@
  *  canonical URL, robots and Open Graph / Twitter tags, plus optional JSON-LD structured data. */
 import { useEffect } from 'react';
 
-export const SITE_URL = 'https://www.turflet.in';
-export const SITE_NAME = 'Turflet';
-export const DEFAULT_TITLE = 'Turflet — Book Turfs, Box Cricket & Sports Courts Near You';
-export const DEFAULT_DESC =
-  'Book football turfs, box cricket, badminton, pickleball and tennis courts near you. See live slots and prices, split the cost with your squad, and walk in with a QR pass.';
-export const DEFAULT_IMAGE = `${SITE_URL}/images/og-image.jpg`;
+import { DEFAULT_DESC, DEFAULT_IMAGE, ROUTES, fullTitle, SITE_URL } from './seoData.js';
+
+export { DEFAULT_DESC, DEFAULT_IMAGE, DEFAULT_TITLE, SITE_NAME, SITE_URL } from './seoData.js';
 
 function setMeta(attr, key, content) {
   let el = document.head.querySelector(`meta[${attr}="${key}"]`);
@@ -40,17 +37,17 @@ function setJsonLd(data) {
 }
 
 export function applySeo({ title, description = DEFAULT_DESC, path = '/', image = DEFAULT_IMAGE, noindex = false, jsonLd = null }) {
-  const fullTitle = title ? `${title} | ${SITE_NAME}` : DEFAULT_TITLE;
+  const t = fullTitle(title);
   const url = SITE_URL + path;
-  document.title = fullTitle;
+  document.title = t;
   setMeta('name', 'description', description);
   setMeta('name', 'robots', noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large');
   setCanonical(url);
-  setMeta('property', 'og:title', fullTitle);
+  setMeta('property', 'og:title', t);
   setMeta('property', 'og:description', description);
   setMeta('property', 'og:url', url);
   setMeta('property', 'og:image', image);
-  setMeta('name', 'twitter:title', fullTitle);
+  setMeta('name', 'twitter:title', t);
   setMeta('name', 'twitter:description', description);
   setMeta('name', 'twitter:image', image);
   setJsonLd(jsonLd);
@@ -64,30 +61,10 @@ export function useSeo(seo) {
   }, [key]);
 }
 
-// Static per-route tags. Private / transactional screens are noindex so they never show in search.
-const ROUTES = {
-  '/': {},
-  '/onboarding': { path: '/' },
-  '/home': {
-    title: 'Book Turfs & Sports Courts Near You',
-    description: 'Find and book football turfs, box cricket grounds, badminton, pickleball and tennis courts near you with live slot availability and instant confirmation.',
-    path: '/home',
-  },
-  '/lobbies': {
-    title: 'Join Open Games & Find Players',
-    description: 'Short on players? Join open football, cricket and badminton games near you, or post your own match and split the turf cost.',
-    path: '/lobbies',
-  },
-  '/help': { title: 'Help & Support', description: 'Answers about booking turfs, payments, cancellations and refunds on Turflet.', path: '/help' },
-  '/policy': { title: 'Booking & Cancellation Policy', description: 'Turflet booking, cancellation and refund policy for turf and court bookings.', path: '/policy' },
-  '/privacy': { title: 'Privacy Policy', description: 'How Turflet collects, uses and protects your personal data.', path: '/privacy' },
-  '/delete-account': { title: 'Delete Your Account', description: 'How to delete your Turflet account and associated data.', path: '/delete-account' },
-};
-
-/** Tags for the current path; venue pages set their own once the venue has loaded. */
+/** Tags for the current path; venue and city/sport landing pages set their own. */
 export function routeSeo(pathname) {
   const p = pathname.replace(/\/+$/, '') || '/';
-  if (p.startsWith('/venues/')) return null;
+  if (p.startsWith('/venues/') || p.startsWith('/turfs/')) return null;
   const hit = ROUTES[p];
   if (hit) return hit;
   return { title: 'Turflet', path: p, noindex: true };

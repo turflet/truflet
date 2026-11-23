@@ -40,6 +40,7 @@ api = [
     path("sports/", venues.sports),
     path("venues/", venues.venue_list),
     path("venues/saved/", venues.saved),
+    path("seo/venues/", venues.seo_venues),
     path("venues/<int:pk>/", venues.venue_detail),
     path("venues/<int:pk>/availability/", venues.availability),
     path("venues/<int:pk>/save/", venues.toggle_save),

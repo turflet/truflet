@@ -17,11 +17,14 @@ import Lobbies from './features/lobby/Lobbies';
 import SquadBuilder from './features/lobby/SquadBuilder';
 import MatchRoom from './features/lobby/MatchRoom';
 import RequestThread from './features/lobby/RequestThread';
+import TurfsLanding from './features/seo/TurfsLanding';
 
 export default function Pages() {
   return (
     <Routes>
       <Route path="venues/:venueId" element={<VenueDetails />} />
+      <Route path="turfs/:city" element={<TurfsLanding />} />
+      <Route path="turfs/:city/:sport" element={<TurfsLanding />} />
       <Route path="book" element={<SlotBooking />} />
       <Route path="payment/:bookingId" element={<Payment />} />
       <Route path="booking-confirmed/:bookingId" element={<BookingConfirmed />} />

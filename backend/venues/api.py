@@ -325,3 +325,27 @@ def review(request, pk):
         "user": request.user, "venue": v, "rating": rating, "comment": request.data.get("comment", "")})
     v.refresh_from_db()
     return Response({"rating": float(v.rating), "review_count": v.review_count})
+
+
+@api_view(["GET"])
+def seo_venues(request):
+    """Every public venue with the fields the web build needs to prerender venue / city / sport pages
+    and write the sitemap (real `updated_at`, no radius filtering, no per-user data)."""
+    qs = (Venue.objects.filter(is_active=True)
+          .select_related("area__city").prefetch_related("venue_sports__sport", "photos", "amenities"))
+    data = []
+    for v in qs:
+        cover = v.cover or (v.photos.all()[0].image if v.photos.all() else None)
+        data.append({
+            "id": v.id, "slug": v.slug, "name": v.name, "area": v.area.name,
+            "city": v.area.city.name, "city_live": v.area.city.is_live,
+            "address": v.address, "lat": v.lat, "lng": v.lng, "phone": v.phone, "about": v.about,
+            "surface": v.surface, "hours_label": v.hours_label, "opens_at": v.opens_at, "closes_at": v.closes_at,
+            "rating": float(v.rating), "review_count": v.review_count, "price_from": v.price_from,
+            "image": image_url(request, cover),
+            "amenities": [a.name for a in v.amenities.all()],
+            "venue_sports": [{"name": vs.sport.name, "slug": vs.sport.slug, "meta": vs.meta, "price": vs.base_price}
+                             for vs in v.venue_sports.all()],
+            "updated_at": v.updated_at.isoformat(),
+        })
+    return Response({"venues": data})

@@ -177,6 +177,8 @@ PUBLIC_APP_URL = os.getenv("PUBLIC_APP_URL", "turflet.app")
 # The React web app (web/): player site + admin dashboard at /admin. The backend's /, /privacy/,
 # /delete-account/ and /admin-panel/ redirect here (the Play Store links point at the backend URLs).
 WEB_APP_URL = os.getenv("WEB_APP_URL", "http://localhost:5173").rstrip("/")
+# Vercel Deploy Hook for the web app: rebuilds its prerendered venue pages + sitemap when venues change.
+WEB_DEPLOY_HOOK_URL = os.getenv("WEB_DEPLOY_HOOK_URL", "")
 LOGIN_URL = "admin:login"
 
 LOGGING = {
