@@ -2,8 +2,8 @@
  *  Join solo (open lobbies on that slot) or Create a group (Squad Builder). Also reschedules a booking.
  *  URL: /book?venue=ID[&sport=][&date=yyyy-mm-dd][&start=H][&reschedule=bookingId] */
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, UserPlus, Users } from 'lucide-react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowRight, CalendarCheck, Check, Flame, Mountain, Trophy, UserPlus, Users, Zap } from 'lucide-react';
 import { useBack, useRequireProfile } from '../../app/nav';
 import { Shell } from '../../app/Shell';
 import { asList, errText } from '../../lib/api';
@@ -76,6 +76,19 @@ function SlotBooking({ venue, reschedule, initialSportId, initialDate, initialSt
   const desktop = useIsDesktop();
   const { toast } = useOverlay();
   const requireProfile = useRequireProfile();
+  // Step 1: date, court & duration · Step 2: start time. Step 2 is a history entry (?step=2) so browser Back returns to step 1.
+  const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const step = params.get('step') === '2' ? 2 : 1;
+  const goStep = (n) => {
+    if (n === step) return;
+    if (n === 1 && location.state?.fromStep1) return nav(-1); // pop the entry we pushed
+    const next = new URLSearchParams(params);
+    if (n === 2) next.set('step', '2');
+    else next.delete('step');
+    setParams(next, n === 2 ? { state: { fromStep1: true } } : { replace: true });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
   const today = useMemo(() => new Date(), []);
   const sports = asList(venue.venue_sports);
   const allCourts = asList(venue.courts);
@@ -164,6 +177,8 @@ function SlotBooking({ venue, reschedule, initialSportId, initialDate, initialSt
   const lobbiesAtStart = start == null ? 0 : (slotAt(start)?.lobbies ?? 0);
   const dateLabel = eeeDMmm(date);
   const hrs = `${dur} ${dur === 1 ? 'hr' : 'hrs'}`;
+  const freePrices = slots.filter((s) => s.status === 'free' && typeof s.price === 'number').map((s) => s.price);
+  const fromHour = freePrices.length ? Math.min(...freePrices) : null;
 
   const doReschedule = async () => {
     if (!(await requireProfile())) return;
@@ -190,9 +205,9 @@ function SlotBooking({ venue, reschedule, initialSportId, initialDate, initialSt
 
   const header = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: desktop ? '0 0 8px' : 'calc(var(--safe-top) + 8px) 20px 12px' }}>
-      <BackSquare onClick={back} />
+      <BackSquare onClick={step === 2 ? () => goStep(1) : back} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={d(desktop ? 28 : 20)}>{isReschedule ? 'Reschedule slot' : 'Pick a slot'}</div>
+        <div style={d(desktop ? 28 : 20)}>{step === 2 ? 'Pick a start time' : isReschedule ? 'Reschedule slot' : 'Pick a slot'}</div>
         <div className="clamp1" style={t(13, { c: C.muted })}>
           {venue.name} · {venue.area}
         </div>
@@ -211,7 +226,7 @@ function SlotBooking({ venue, reschedule, initialSportId, initialDate, initialSt
           <Segmented bg="#E6ECE3" height={44} labels={sports.map((s) => s.name)} index={sportIdx} onChange={(i) => (setSportIdx(i), setCourtIdx(0))} />
         </div>
       )}
-      <Label style={{ padding: desktop ? '20px 0 10px' : undefined }}>
+      <Label style={desktop ? { padding: '20px 0 10px' } : undefined}>
         {MONTHS_LONG[date.getMonth()]} {date.getFullYear()}
       </Label>
       <div className="hscroll" style={{ gap: 8, padding: pad }}>
@@ -245,7 +260,7 @@ function SlotBooking({ venue, reschedule, initialSportId, initialDate, initialSt
           );
         })}
       </div>
-      <Label style={{ padding: desktop ? '20px 0 10px' : undefined }}>Court</Label>
+      <Label style={desktop ? { padding: '20px 0 10px' } : undefined}>Court</Label>
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(courts.length, 4)}, 1fr)`, gap: 8, padding: pad }}>
         {courts.slice(0, 4).map((c, i) => (
           <Choice key={c.id} selected={i === courtIdx} height={60} onClick={() => setCourtIdx(i)} style={{ flexDirection: 'column', minWidth: 0 }}>
@@ -258,23 +273,38 @@ function SlotBooking({ venue, reschedule, initialSportId, initialDate, initialSt
       </div>
       {!isReschedule && (
         <>
-          <Label style={{ padding: desktop ? '20px 0 10px' : undefined }}>Duration</Label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, padding: pad }}>
-            {[1, 2, 3, 4].map((n) => (
-              <Choice key={n} selected={n === dur} height={44} radius={12} onClick={() => setDur(n)}>
-                <span style={t(14, { w: 600, c: n === dur ? '#fff' : C.ink })}>
-                  {n} {n === 1 ? 'hr' : 'hrs'}
-                </span>
-              </Choice>
-            ))}
-          </div>
+          <Label style={desktop ? { padding: '20px 0 10px' } : undefined}>How long do you want to play?</Label>
+          <DurationPicker dur={dur} onPick={setDur} fromHour={fromHour} pad={pad} />
         </>
       )}
     </>
   );
 
+  const stepper = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: desktop ? '4px 0 8px' : '0 20px 4px' }}>
+      <StepDot n={1} step={step} label="Date, court & duration" onClick={step === 2 ? () => goStep(1) : undefined} />
+      <div style={{ flex: 1, height: 2, borderRadius: 2, background: step === 2 ? C.brand : C.line, transition: 'background 200ms' }} />
+      <StepDot n={2} step={step} label="Start time" />
+    </div>
+  );
+
+  const picked = (
+    <div style={{ margin: desktop ? '0 0 16px' : '10px 20px 0', padding: '12px 8px 12px 14px', borderRadius: 16, background: C.mint, display: 'flex', alignItems: 'center', gap: 10 }}>
+      <CalendarCheck size={20} color={C.brand} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={t(14, { w: 700, c: C.brand })}>
+          {dateLabel} · {court?.name ?? ''}
+        </div>
+        <div style={t(12, { c: C.green700 })}>{isReschedule ? sport.name : `${sport.name} · ${hrs}`}</div>
+      </div>
+      <button className="tap" onClick={() => goStep(1)} style={{ padding: '8px 12px', borderRadius: 10, background: 'transparent', ...t(13, { w: 700, c: C.brand }) }}>
+        Change
+      </button>
+    </div>
+  );
+
   const grid = (
-    <div style={{ margin: desktop ? 0 : '24px 20px 0', padding: desktop ? 24 : 16, borderRadius: desktop ? 24 : 20, background: '#fff', border: `1px solid ${C.line}` }}>
+    <div style={{ margin: desktop ? 0 : '16px 20px 0', padding: desktop ? 24 : 16, borderRadius: desktop ? 24 : 20, background: '#fff', border: `1px solid ${C.line}` }}>
       <div style={{ height: 6, margin: '0 24px 6px', borderRadius: 999, background: '#C9D4CC' }} />
       <div style={{ textAlign: 'center', ...t(11, { w: 600, c: C.muted, ls: 1.2 }) }}>PICK A START TIME</div>
       <div style={{ height: 14 }} />
@@ -314,6 +344,31 @@ function SlotBooking({ venue, reschedule, initialSportId, initialDate, initialSt
         <Legend box={{ width: 8, height: 8, borderRadius: 99, background: '#B45309' }} label="Peak price" />
       </div>
     </div>
+  );
+
+  const step1Summary = (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={t(14, { w: 700 })}>
+            {dateLabel} · {court?.name ?? ''}
+          </div>
+          <div style={{ marginTop: 2, ...t(12, { c: C.muted }) }}>
+            {sport.name} · {hrs}
+          </div>
+        </div>
+        {!isReschedule && fromHour != null && (
+          <div style={{ textAlign: 'right' }}>
+            <div style={t(11, { c: C.muted })}>from</div>
+            <div style={d(22)}>{inr(fromHour * dur)}</div>
+          </div>
+        )}
+      </div>
+      <div style={{ height: 12 }} />
+      <PrimaryButton height={56} radius={16} shadowOn={false} trailing={<ArrowRight size={18} color="#fff" />} onClick={loading ? undefined : () => goStep(2)}>
+        Next: pick a start time
+      </PrimaryButton>
+    </>
   );
 
   const summary = (
@@ -392,17 +447,23 @@ function SlotBooking({ venue, reschedule, initialSportId, initialDate, initialSt
     return (
       <Shell>
         {header}
+        {stepper}
         <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 380px', gap: 36, alignItems: 'start' }}>
-          <div style={{ minWidth: 0 }}>
-            {selectors}
-            <div style={{ height: 24 }} />
-            {grid}
+          <div key={step} style={{ minWidth: 0, animation: 'rise 260ms ease' }}>
+            {step === 1 ? (
+              selectors
+            ) : (
+              <>
+                {picked}
+                {grid}
+              </>
+            )}
           </div>
           <aside style={{ position: 'sticky', top: 96 }}>
             <CardBox padding={24} radius={24} shadowCss={shadow.big}>
               <div style={{ ...t(12, { w: 700, c: C.muted, ls: 0.6 }), textTransform: 'uppercase', marginBottom: 12 }}>Your slot</div>
-              {summary}
-              {!isReschedule && (
+              {step === 1 ? step1Summary : summary}
+              {!isReschedule && step === 2 && (
                 <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.line}`, ...t(12, { c: C.muted, h: 1.5 }) }}>
                   <b style={{ color: C.ink }}>Create a group</b> books the turf for your squad — pay it all or split it. <b style={{ color: C.ink }}>Join solo</b> joins a group
                   already playing at this time.
@@ -418,8 +479,17 @@ function SlotBooking({ venue, reschedule, initialSportId, initialDate, initialSt
   return (
     <div className="page" style={{ minHeight: '100dvh', paddingBottom: 200 }}>
       {header}
-      {selectors}
-      {grid}
+      {stepper}
+      <div key={step} style={{ animation: 'rise 260ms ease' }}>
+        {step === 1 ? (
+          selectors
+        ) : (
+          <>
+            {picked}
+            {grid}
+          </>
+        )}
+      </div>
       <div
         style={{
           position: 'fixed',
@@ -433,9 +503,123 @@ function SlotBooking({ venue, reschedule, initialSportId, initialDate, initialSt
           borderTop: `1px solid ${C.line}`,
         }}
       >
-        {summary}
+        {step === 1 ? step1Summary : summary}
       </div>
     </div>
+  );
+}
+
+const DURATIONS = [
+  { hours: 1, tag: 'Quick game', Icon: Zap, hint: 'A quick knock — perfect after work.' },
+  { hours: 2, tag: 'Full match', Icon: Flame, hint: 'Most squads pick this: warm-up plus a full match.' },
+  { hours: 3, tag: 'Extended', Icon: Trophy, hint: 'Room for a mini tournament — rotate teams.' },
+  { hours: 4, tag: 'Marathon', Icon: Mountain, hint: 'Make a day of it — play till you drop.' },
+];
+
+/** Duration cards: hours, a vibe tag, a "from" price for the day, and a Popular badge on 2 hrs. */
+function DurationPicker({ dur, onPick, fromHour, pad }) {
+  const picked = DURATIONS.find((o) => o.hours === dur) ?? DURATIONS[1];
+  return (
+    <div style={{ padding: pad }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, paddingTop: 10 }}>
+        {DURATIONS.map(({ hours, tag, Icon }) => {
+          const on = hours === dur;
+          const popular = hours === 2;
+          return (
+            <button
+              key={hours}
+              aria-pressed={on}
+              aria-label={`${hours} ${hours === 1 ? 'hour' : 'hours'}, ${tag}${popular ? ', most popular' : ''}`}
+              className="tap"
+              onClick={() => onPick(hours)}
+              style={{
+                position: 'relative',
+                minWidth: 0,
+                padding: '16px 4px 10px',
+                borderRadius: 18,
+                background: on ? `linear-gradient(135deg, ${C.green700}, ${C.brandDark})` : '#fff',
+                border: `1.2px solid ${on ? C.brand : popular ? 'rgba(242,85,44,.45)' : C.line}`,
+                boxShadow: on ? shadow.brandSm : undefined,
+                transform: on ? 'scale(1)' : 'scale(0.96)',
+                transition: 'transform 180ms cubic-bezier(.34,1.56,.64,1), background 180ms, box-shadow 180ms',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 2,
+              }}
+            >
+              {popular && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: -10,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    padding: '3px 7px',
+                    borderRadius: 20,
+                    background: C.coral,
+                    boxShadow: '0 3px 8px rgba(242,85,44,.25)',
+                    whiteSpace: 'nowrap',
+                    ...t(9, { w: 800, c: '#fff', ls: 0.6 }),
+                  }}
+                >
+                  POPULAR
+                </span>
+              )}
+              <Icon size={18} color={on ? C.coral : C.muted} />
+              <span style={{ marginTop: 4 }}>
+                <span style={d(26, { c: on ? '#fff' : C.ink })}>{hours}</span>
+                <span style={{ opacity: 0.8, ...t(12, { w: 600, c: on ? '#fff' : C.ink }) }}>{hours === 1 ? ' hr' : ' hrs'}</span>
+              </span>
+              <span className="clamp1" style={{ maxWidth: '100%', ...t(11, { w: 600, c: on ? 'rgba(255,255,255,.85)' : C.muted }) }}>
+                {tag}
+              </span>
+              {fromHour != null && (
+                <span style={{ marginTop: 4, padding: '2px 6px', borderRadius: 8, background: on ? 'rgba(255,255,255,.14)' : C.chip, ...t(11, { w: 700, c: on ? '#fff' : C.mutedInk }) }}>
+                  {inr(fromHour * hours)}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <div
+        key={picked.hours}
+        style={{ marginTop: 12, padding: '10px 14px', borderRadius: 14, background: C.mint, display: 'flex', alignItems: 'center', gap: 8, animation: 'rise 220ms ease' }}
+      >
+        <picked.Icon size={16} color={C.brand} />
+        <span style={t(13, { w: 500, c: C.brand })}>{picked.hint}</span>
+      </div>
+    </div>
+  );
+}
+
+function StepDot({ n, step, label, onClick }) {
+  const on = step === n,
+    done = step > n;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', padding: 0, cursor: onClick ? 'pointer' : 'default', flex: 'none' }}
+    >
+      <span
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: 99,
+          display: 'grid',
+          placeItems: 'center',
+          background: on || done ? C.brand : C.chip,
+          transition: 'background 200ms',
+          ...t(11, { w: 800, c: on ? '#fff' : C.muted }),
+        }}
+      >
+        {done ? <Check size={13} color="#fff" /> : n}
+      </span>
+      <span style={t(12, { w: on ? 700 : 500, c: on || done ? C.ink : C.muted })}>{label}</span>
+    </button>
   );
 }
 
