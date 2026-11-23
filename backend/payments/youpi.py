@@ -2,7 +2,7 @@
 
 Server-to-server only: the merchant key and webhook secret never reach the app. Settings:
 
-    YOUPI_API_URL         e.g. https://pay-api.truflet.in   (the payment API, not the checkout host)
+    YOUPI_API_URL         e.g. https://pay-api.turflet.in   (the payment API, not the checkout host)
     YOUPI_MERCHANT_ID     merchant id from the YOUPI admin panel
     YOUPI_MERCHANT_KEY    server-side merchant API key   (secret)
     YOUPI_WEBHOOK_SECRET  webhook signing secret          (secret)

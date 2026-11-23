@@ -1,4 +1,4 @@
-package com.truflet.app.developer
+package com.turflet.app.developer
 
 import io.flutter.embedding.android.FlutterActivity
 

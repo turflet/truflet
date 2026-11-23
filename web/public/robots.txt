@@ -14,4 +14,4 @@ Disallow: /saved
 Disallow: /squad
 Disallow: /matches
 
-Sitemap: https://www.truflet.in/sitemap.xml
+Sitemap: https://www.turflet.in/sitemap.xml

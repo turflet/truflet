@@ -2,7 +2,7 @@
  *  canonical URL, robots and Open Graph / Twitter tags, plus optional JSON-LD structured data. */
 import { useEffect } from 'react';
 
-export const SITE_URL = 'https://www.truflet.in';
+export const SITE_URL = 'https://www.turflet.in';
 export const SITE_NAME = 'Turflet';
 export const DEFAULT_TITLE = 'Turflet — Book Turfs, Box Cricket & Sports Courts Near You';
 export const DEFAULT_DESC =
