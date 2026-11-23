@@ -1,8 +1,8 @@
-/** 7 · Review & pay: hold countdown, coupon, price details, payment method. URL: /payment/:bookingId
+/** 7 · Review & pay: hold countdown, coupon, price details, pay (the gateway checkout picks the method). URL: /payment/:bookingId
  *  Phone = the Flutter screen. Desktop = details on the left, sticky price + pay card on the right. */
 import { useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { ArrowRight, ChevronsRight, Clock, CreditCard, Landmark, ShieldCheck, Wallet } from 'lucide-react';
+import { ArrowRight, Clock, ShieldCheck } from 'lucide-react';
 import { useSession } from '../../app/session';
 import { routes, useBack } from '../../app/nav';
 import { Shell } from '../../app/Shell';
@@ -12,15 +12,8 @@ import { inr, mmss } from '../../lib/format';
 import { C, d, shadow, t } from '../../theme';
 import { useData, useIsDesktop, useNow } from '../../ui/hooks';
 import { useOverlay } from '../../ui/overlay';
-import { BackSquare, CardBox, ErrorRetry, H2, Img, KV, ListSkeleton, PriceRow, RadioDot, Spinner, SportPill } from '../../ui/kit';
+import { BackSquare, CardBox, ErrorRetry, H2, Img, KV, ListSkeleton, PriceRow, Spinner, SportPill } from '../../ui/kit';
 import { reserveTab, showUpiCheckout } from './upiCheckout';
-
-const METHODS = [
-  { id: 'upi', title: 'UPI', short: 'UPI', sub: 'Pay from any UPI app', icon: ChevronsRight },
-  { id: 'card', title: 'Credit / Debit card', short: 'Card', sub: 'Visa, Mastercard, RuPay', icon: CreditCard },
-  { id: 'net', title: 'Net banking', short: 'Net banking', sub: 'All major banks', icon: Landmark },
-  { id: 'wallet', title: 'Wallets', short: 'Wallet', sub: 'Turflet balance', icon: Wallet },
-];
 
 export default function PaymentPage() {
   const id = Number(useParams().bookingId);
@@ -47,9 +40,7 @@ function Payment({ booking: b, setBooking }) {
   const desktop = useIsDesktop();
   const { toast, sheet } = useOverlay();
   const now = useNow();
-  const [method, setMethod] = useState('upi');
   const [code, setCode] = useState(b.coupon ?? '');
-  const [upi, setUpi] = useState('');
   const [busy, setBusy] = useState(false);
   const [couponBusy, setCouponBusy] = useState(false);
   const [couponError, setCouponError] = useState(null);
@@ -57,9 +48,7 @@ function Payment({ booking: b, setBooking }) {
   const until = b.held_until ? new Date(b.held_until).getTime() : null;
   const left = until == null ? 0 : Math.max(0, until - now);
   const applied = b.coupon != null;
-  const wallet = app.user?.wallet_balance ?? 0;
   const peak = (b.peak_hours ?? 0) > 0;
-  const short = METHODS.find((m) => m.id === method).short;
   const gatewayUpi = app.config.upi_checkout === true;
   const venue = asMap(b.venue),
     sport = asMap(b.sport),
@@ -83,10 +72,10 @@ function Payment({ booking: b, setBooking }) {
 
   const pay = async () => {
     if (left === 0) return toast('Your slot hold expired. Please pick the slot again.');
-    const tab = method === 'upi' && gatewayUpi ? reserveTab() : null;
+    const tab = gatewayUpi ? reserveTab() : null;
     setBusy(true);
     try {
-      const r = await bookingRepo.pay(b.id, method, upi.trim());
+      const r = await bookingRepo.pay(b.id, 'upi', '');
       const payment = r.payment;
       if (payment && typeof payment === 'object' && payment.status === 'pending' && r.status !== 'confirmed') {
         setBooking(r); // hold was extended for the payment window
@@ -183,58 +172,6 @@ function Payment({ booking: b, setBooking }) {
     </div>
   );
 
-  const methods = (
-    <>
-      <H2 size={16} style={{ margin: '0 0 10px' }}>
-        Pay with
-      </H2>
-      <div style={{ display: 'grid', gap: 10 }}>
-        {METHODS.map((m) => {
-          const on = m.id === method;
-          const I = m.icon;
-          return (
-            <div key={m.id} style={{ borderRadius: 18, background: '#fff', border: `${on ? 2 : 1}px solid ${on ? C.brand : C.line}`, transition: 'border 150ms' }}>
-              <button
-                role="radio"
-                aria-checked={on}
-                onClick={() => setMethod(m.id)}
-                style={{ width: '100%', minHeight: 60, padding: '0 14px', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}
-              >
-                <span style={{ width: 40, height: 40, borderRadius: 12, background: C.mint, display: 'grid', placeItems: 'center' }}>
-                  <I size={20} color={C.green700} />
-                </span>
-                <span style={{ flex: 1 }}>
-                  <span style={{ display: 'block', ...t(15, { w: 600 }) }}>{m.title}</span>
-                  <span style={{ display: 'block', ...t(12, { c: C.muted }) }}>{m.id === 'wallet' ? `Turflet balance ${inr(wallet)}` : m.sub}</span>
-                </span>
-                <RadioDot on={on} />
-              </button>
-              {on && m.id === 'upi' && !gatewayUpi && (
-                <div style={{ padding: '0 14px 14px' }}>
-                  <div style={t(12, { c: C.muted })}>UPI ID</div>
-                  <div
-                    style={{
-                      marginTop: 6,
-                      height: 46,
-                      padding: '0 14px',
-                      borderRadius: 12,
-                      background: C.ground,
-                      border: `1px solid ${C.line}`,
-                      display: 'flex',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <input type="email" value={upi} placeholder="yourname@bank" onChange={(e) => setUpi(e.target.value)} style={t(14)} />
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </>
-  );
-
   const reassure = (
     <>
       <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6, textAlign: 'center', ...t(12, { c: C.muted }) }}>
@@ -267,9 +204,7 @@ function Payment({ booking: b, setBooking }) {
       ) : (
         <>
           <span style={t(16, { w: 700, c: '#fff' })}>Pay {inr(b.total)}</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, ...t(14, { w: 600, c: '#fff' }) }}>
-            via {short} <ArrowRight size={18} color="#fff" />
-          </span>
+          <ArrowRight size={18} color="#fff" />
         </>
       )}
     </button>
@@ -287,7 +222,6 @@ function Payment({ booking: b, setBooking }) {
           <div style={{ display: 'grid', gap: 18, minWidth: 0 }}>
             {summaryCard}
             {coupon}
-            <div>{methods}</div>
           </div>
           <aside style={{ position: 'sticky', top: 96 }}>
             <CardBox padding={8} radius={24} shadowCss={shadow.big}>
@@ -314,10 +248,7 @@ function Payment({ booking: b, setBooking }) {
         {summaryCard}
         {coupon}
         {prices}
-        <div>
-          {methods}
-          {reassure}
-        </div>
+        <div>{reassure}</div>
       </div>
       <div
         style={{

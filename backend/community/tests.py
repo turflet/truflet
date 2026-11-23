@@ -42,12 +42,16 @@ class MatchTestCase(TestCase):
 
     HOST_PAY_METHOD = "upi"  # instant gateway here; LobbyYoupiTests pays from the wallet
 
-    def create(self, accept_friend=True, pay=True, **extra):
-        """Squad Builder → the host is sent straight to pay the whole turf (a held booking). `pay` pays it."""
+    def payload(self, **extra):
         body = {"venue": self.venue.id, "court": self.court.id, "sport": self.sport.id, "date": self.day.isoformat(),
                 "start_hour": 19, "duration": 1, "capacity": 4, "is_public": True,
                 "friends": [{"contact": "friend@x.com", "tag": "known"}, {"tag": "guest", "name": "Gus"}]}
         body.update(extra)
+        return body
+
+    def create(self, accept_friend=True, pay=True, **extra):
+        """Squad Builder → the host is sent straight to pay the whole turf (a held booking). `pay` pays it."""
+        body = self.payload(**extra)
         r = self.api(self.host).post("/api/v1/lobbies/", body, format="json")
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data["status"], "draft")
@@ -128,6 +132,23 @@ class HostPaysTests(MatchTestCase):
         self.assertEqual((lb["taken"], lb["spots_left"]), (10, 0))
         r = self.api(self.solo).post(f"/api/v1/lobbies/{lb['id']}/request/", {}, format="json")
         self.assertEqual(r.status_code, 400)
+
+    def test_players_with_you_take_spots_and_share_is_turf_over_total(self):
+        lb = self.create(capacity=10, players_with_you=7)  # host + friend + guest + 4 unnamed
+        self.assertEqual((lb["capacity"], lb["taken"], lb["spots_left"], lb["own_players"]), (10, 7, 3, 4))
+        self.assertEqual(lb["share"], -(-lb["turf_price"] // 10))
+        lots = self.client.get(f"/api/v1/venues/{self.venue.id}/lobbies/").data
+        self.assertEqual(lots[0]["spots_left"], 3)
+
+    def test_players_with_you_is_validated(self):
+        r = self.api(self.host).post("/api/v1/lobbies/", {**self.payload(capacity=10), "players_with_you": 11}, format="json")
+        self.assertEqual(r.status_code, 400)
+        r = self.api(self.host).post("/api/v1/lobbies/", {**self.payload(capacity=10), "players_with_you": 1}, format="json")
+        self.assertEqual(r.status_code, 400)  # host, friend and guest are already 3
+
+    def test_full_squad_is_private(self):
+        lb = self.create(capacity=8, players_with_you=8)
+        self.assertEqual((lb["is_public"], lb["spots_left"]), (False, 0))
 
 
 class ScreeningTests(MatchTestCase):

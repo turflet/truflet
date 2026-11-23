@@ -24,13 +24,6 @@ class PaymentScreen extends StatelessWidget {
   );
 }
 
-const _methods = [
-  ('upi', 'UPI', 'UPI', 'Pay from any UPI app', LucideIcons.chevronsRight),
-  ('card', 'Credit / Debit card', 'Card', 'Visa, Mastercard, RuPay', LucideIcons.creditCard),
-  ('net', 'Net banking', 'Net banking', 'All major banks', LucideIcons.landmark),
-  ('wallet', 'Wallets', 'Wallet', 'Turflet balance', LucideIcons.wallet),
-];
-
 class _PaymentView extends StatefulWidget {
   const _PaymentView();
   @override
@@ -40,7 +33,6 @@ class _PaymentView extends StatefulWidget {
 /// Text fields are view state; everything else lives in [PaymentCubit].
 class _PaymentViewState extends State<_PaymentView> {
   late final code = TextEditingController(text: context.read<PaymentCubit>().state.booking['coupon'] ?? '');
-  final upi = TextEditingController();
 
   PaymentCubit get _cubit => context.read<PaymentCubit>();
 
@@ -50,7 +42,7 @@ class _PaymentViewState extends State<_PaymentView> {
   }
 
   Future<void> _pay() async {
-    final r = await _cubit.pay(upi.text);
+    final r = await _cubit.pay('');
     if (!mounted) return;
     if (r.error != null) {
       toast(context, r.error!);
@@ -70,18 +62,11 @@ class _PaymentViewState extends State<_PaymentView> {
   Widget build(BuildContext context) => BlocBuilder<PaymentCubit, PaymentState>(builder: _build);
 
   Widget _build(BuildContext context, PaymentState st) {
-    final b = st.booking,
-        left = st.left,
-        method = st.method,
-        busy = st.busy,
-        couponBusy = st.couponBusy,
-        couponError = st.couponError;
+    final b = st.booking, left = st.left, busy = st.busy, couponBusy = st.couponBusy, couponError = st.couponError;
     final top = MediaQuery.of(context).padding.top;
     final applied = st.couponApplied;
     final mm = left.inMinutes.toString().padLeft(2, '0');
     final ss = (left.inSeconds % 60).toString().padLeft(2, '0');
-    final short = _methods.firstWhere((m) => m.$1 == method).$3;
-    final wallet = context.watch<AppCubit>().state.user?['wallet_balance'] ?? 0;
     final peak = (b['peak_hours'] ?? 0) > 0;
     return Scaffold(
       body: Column(
@@ -116,11 +101,7 @@ class _PaymentViewState extends State<_PaymentView> {
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
               children: [
                 Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                    boxShadow: shadowCard,
-                  ),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), boxShadow: shadowCard),
                   clipBehavior: Clip.antiAlias,
                   child: Column(
                     children: [
@@ -163,17 +144,9 @@ class _PaymentViewState extends State<_PaymentView> {
                         ),
                         child: Row(
                           children: [
-                            Expanded(
-                              child: KV(
-                                'Date',
-                                b['date_label'].toString().replaceFirst('Today, ', 'Today, '),
-                                vSize: 13,
-                              ),
-                            ),
+                            Expanded(child: KV('Date', b['date_label'].toString().replaceFirst('Today, ', 'Today, '), vSize: 13)),
                             Expanded(child: KV('Time', b['time_short'], vSize: 13)),
-                            Expanded(
-                              child: KV('Duration', '${b['duration']} ${b['duration'] == 1 ? 'hr' : 'hrs'}', vSize: 13),
-                            ),
+                            Expanded(child: KV('Duration', '${b['duration']} ${b['duration'] == 1 ? 'hr' : 'hrs'}', vSize: 13)),
                           ],
                         ),
                       ),
@@ -312,19 +285,13 @@ class _PaymentViewState extends State<_PaymentView> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                const H2('Pay with', size: 16),
-                const SizedBox(height: 10),
-                for (final m in _methods) ...[_method(m, wallet, method), const SizedBox(height: 10)],
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     const Icon(LucideIcons.shieldCheck, size: 14, color: C.muted),
                     const SizedBox(width: 6),
                     Flexible(
-                      child: Text(
-                        '100% secure payments · Free cancellation up to 6 hrs before',
-                        style: t(12, c: C.muted),
-                      ),
+                      child: Text('100% secure payments · Free cancellation up to 6 hrs before', style: t(12, c: C.muted)),
                     ),
                   ],
                 ),
@@ -369,11 +336,6 @@ class _PaymentViewState extends State<_PaymentView> {
                                 style: t(16, w: FontWeight.w700, c: Colors.white),
                               ),
                               const Spacer(),
-                              Text(
-                                'via $short',
-                                style: t(14, w: FontWeight.w600, c: Colors.white),
-                              ),
-                              const SizedBox(width: 6),
                               const Icon(LucideIcons.arrowRight, size: 18, color: Colors.white),
                             ],
                           ),
@@ -382,86 +344,6 @@ class _PaymentViewState extends State<_PaymentView> {
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _method((String, String, String, String, IconData) m, int wallet, String method) {
-    final on = m.$1 == method;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: on ? C.brand : C.line, width: on ? 2 : 1),
-      ),
-      child: Column(
-        children: [
-          Semantics(
-            checked: on,
-            inMutuallyExclusiveGroup: true,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(18),
-              onTap: () => _cubit.selectMethod(m.$1),
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 60),
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(color: C.mint, borderRadius: BorderRadius.circular(12)),
-                      child: Icon(m.$5, size: 20, color: C.green700),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(m.$2, style: t(15, w: FontWeight.w600)),
-                          Text(m.$1 == 'wallet' ? 'Turflet balance ${inr(wallet)}' : m.$4, style: t(12, c: C.muted)),
-                        ],
-                      ),
-                    ),
-                    RadioDot(on),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          // with the gateway checkout the player picks their UPI app there, so no UPI ID is needed here
-          if (on && m.$1 == 'upi' && context.read<AppCubit>().state.config['upi_checkout'] != true)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('UPI ID', style: t(12, c: C.muted)),
-                  const SizedBox(height: 6),
-                  Container(
-                    height: 46,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(
-                      color: C.ground,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: C.line),
-                    ),
-                    child: TextField(
-                      controller: upi,
-                      keyboardType: TextInputType.emailAddress,
-                      style: t(14),
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        hintText: 'yourname@bank',
-                        hintStyle: t(14, c: C.muted),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
         ],
       ),
     );

@@ -16,9 +16,13 @@ class SquadBuilderState {
   final bool busy;
   final int splitFee;
 
+  /// Players the host already has, including the host and everyone listed below (named or not).
+  final int withYou;
+
   const SquadBuilderState({
     required this.args,
     required this.capacity,
+    this.withYou = 1,
     this.friends = const [],
     this.isPublic = true,
     this.recent = const [],
@@ -27,7 +31,10 @@ class SquadBuilderState {
   });
 
   int get maxPlayers => (args.sport['max_players'] as int?) ?? 16;
-  int get squad => 1 + friends.length;
+
+  /// Listed players: the host + friends / guests added by name.
+  int get listed => 1 + friends.length;
+  int get squad => withYou < listed ? listed : withYou;
   int get openSpots => (capacity - squad).clamp(0, 99);
   int get namedGuests => friends.where((f) => f['tag'] == 'guest').length;
 
@@ -47,16 +54,23 @@ class SquadBuilderState {
 
   String get dateLabel => DateFormat('EEE, d MMM').format(args.date);
 
-  SquadBuilderState copyWith({int? capacity, List<Json>? friends, bool? isPublic, List<Json>? recent, bool? busy}) =>
-      SquadBuilderState(
-        args: args,
-        capacity: capacity ?? this.capacity,
-        friends: friends ?? this.friends,
-        isPublic: isPublic ?? this.isPublic,
-        recent: recent ?? this.recent,
-        busy: busy ?? this.busy,
-        splitFee: splitFee,
-      );
+  SquadBuilderState copyWith({
+    int? capacity,
+    int? withYou,
+    List<Json>? friends,
+    bool? isPublic,
+    List<Json>? recent,
+    bool? busy,
+  }) => SquadBuilderState(
+    args: args,
+    capacity: capacity ?? this.capacity,
+    withYou: withYou ?? this.withYou,
+    friends: friends ?? this.friends,
+    isPublic: isPublic ?? this.isPublic,
+    recent: recent ?? this.recent,
+    busy: busy ?? this.busy,
+    splitFee: splitFee,
+  );
 }
 
 /// 4 · Squad Builder: capacity, friends tagged Known / Guest and open to solo players. The host pays the
@@ -77,13 +91,17 @@ class SquadBuilderCubit extends Cubit<SquadBuilderState> {
     } catch (_) {}
   }
 
+  /// Total can't go below the players the host already has (nor 2).
   void setCapacity(int n) => _emit(state.copyWith(capacity: n.clamp(state.squad.clamp(2, 99), state.maxPlayers)));
+
+  /// Players already with the host: at least everyone listed, at most the total.
+  void setWithYou(int n) => _emit(state.copyWith(withYou: n.clamp(state.listed, state.capacity)));
   void setPublic(bool v) => _emit(state.copyWith(isPublic: v));
 
   /// Returns an error message, or null when added.
   String? addKnown(Json player) {
     if (state.friends.any((f) => f['user_id'] == player['id'])) return '${player['name']} is already in your squad.';
-    if (state.squad >= state.maxPlayers) return 'The squad is at the ${state.maxPlayers}-player limit.';
+    if (state.listed >= state.maxPlayers) return 'The squad is at the ${state.maxPlayers}-player limit.';
     _add({'tag': 'known', 'user_id': player['id'], 'name': player['name'], 'initials': player['initials']});
     return null;
   }
@@ -91,15 +109,17 @@ class SquadBuilderCubit extends Cubit<SquadBuilderState> {
   String? addGuest(String name) {
     final n = name.trim();
     if (n.isEmpty) return 'Give your guest a name.';
-    if (state.squad >= state.maxPlayers) return 'The squad is at the ${state.maxPlayers}-player limit.';
+    if (state.listed >= state.maxPlayers) return 'The squad is at the ${state.maxPlayers}-player limit.';
     _add({'tag': 'guest', 'name': n, 'initials': n.substring(0, 1).toUpperCase()});
     return null;
   }
 
   void _add(Json f) {
     final friends = [...state.friends, f];
-    final capacity = state.capacity < 1 + friends.length ? 1 + friends.length : state.capacity;
-    _emit(state.copyWith(friends: friends, capacity: capacity));
+    final listed = 1 + friends.length;
+    final withYou = state.withYou < listed ? listed : state.withYou;
+    final capacity = state.capacity < withYou ? withYou : state.capacity;
+    _emit(state.copyWith(friends: friends, withYou: withYou, capacity: capacity));
   }
 
   void remove(int i) => _emit(state.copyWith(friends: [...state.friends]..removeAt(i)));
@@ -121,6 +141,7 @@ class SquadBuilderCubit extends Cubit<SquadBuilderState> {
         'start_hour': a.startHour,
         'duration': a.duration,
         'capacity': state.capacity,
+        'players_with_you': state.squad,
         'is_public': state.openToSolo,
         'friends': [
           for (final f in state.friends)

@@ -53,6 +53,8 @@ class Lobby(TimeStamped):
     booking_mode = models.CharField(max_length=14, choices=MODES, default="book_recover")
     is_public = models.BooleanField(default=False, help_text="Open spots are listed for solo players")
     turf_price = models.PositiveIntegerField(help_text="Slot rent the squad splits (₹)")
+    own_players = models.PositiveSmallIntegerField(
+        default=0, help_text="Players the host brings who aren't listed (no app account / not named): they take spots")
 
     booking = models.OneToOneField("bookings.Booking", null=True, blank=True, on_delete=models.SET_NULL,
                                    related_name="lobby")
@@ -123,7 +125,7 @@ class Lobby(TimeStamped):
     def taken(self):
         if self.own_squad:
             return self.capacity
-        return self.members.filter(holds_spot_q()).count()
+        return self.members.filter(holds_spot_q()).count() + self.own_players
 
     @property
     def spots_left(self):

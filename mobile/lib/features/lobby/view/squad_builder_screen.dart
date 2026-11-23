@@ -87,7 +87,7 @@ class _SquadBuilderView extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                 children: [
                   _slotCard(st),
-                  const Label('Team capacity', padding: EdgeInsets.fromLTRB(0, 20, 0, 10)),
+                  const Label('Players', padding: EdgeInsets.fromLTRB(0, 20, 0, 10)),
                   _capacity(st, cubit),
                   const Label('Your squad', padding: EdgeInsets.fromLTRB(0, 20, 0, 10)),
                   _squad(context, st, cubit),
@@ -152,52 +152,137 @@ class _SquadBuilderView extends StatelessWidget {
   }
 
   Widget _capacity(SquadBuilderState st, SquadBuilderCubit cubit) {
-    Widget btn(String label, bool primary, VoidCallback onTap, String semantics) => Semantics(
+    Widget btn(IconData icon, bool primary, VoidCallback? onTap, String semantics) => Semantics(
       button: true,
       label: semantics,
       child: GestureDetector(
         onTap: onTap,
-        child: Container(
-          width: 40,
-          height: 40,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: primary ? C.brand : C.ground,
-            borderRadius: BorderRadius.circular(12),
-            border: primary ? null : Border.all(color: C.line),
-          ),
-          child: Text(
-            label,
-            style: t(20, w: FontWeight.w700, c: primary ? Colors.white : C.ink),
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 150),
+          opacity: onTap == null ? 0.35 : 1,
+          child: Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: primary ? C.brand : C.ground,
+              borderRadius: BorderRadius.circular(12),
+              border: primary ? null : Border.all(color: C.line),
+            ),
+            child: Icon(icon, size: 18, color: primary ? Colors.white : C.ink),
           ),
         ),
       ),
     );
+    Widget stepper(String title, String sub, int value, VoidCallback? minus, VoidCallback? plus, String what) => Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: t(14, w: FontWeight.w600)),
+              Text(sub, style: t(12, c: C.muted)),
+            ],
+          ),
+        ),
+        btn(LucideIcons.minus, false, minus, 'Fewer $what'),
+        SizedBox(
+          width: 46,
+          child: Text('$value', textAlign: TextAlign.center, style: d(22)),
+        ),
+        btn(LucideIcons.plus, true, plus, 'More $what'),
+      ],
+    );
     final half = st.capacity ~/ 2;
+    final open = st.openSpots;
+    final share = st.share;
     return CardBox(
       padding: const EdgeInsets.all(14),
       shadow: null,
       border: Border.all(color: C.line),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
+          stepper(
+            'Total players',
+            '${st.capacity.isEven ? '${half}v$half · ' : ''}including you · max ${st.maxPlayers}',
+            st.capacity,
+            st.capacity > st.squad.clamp(2, 99) ? () => cubit.setCapacity(st.capacity - 1) : null,
+            st.capacity < st.maxPlayers ? () => cubit.setCapacity(st.capacity + 1) : null,
+            'players',
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Divider(height: 1, color: C.line),
+          ),
+          stepper(
+            'Already with you',
+            'You + players you\'re bringing',
+            st.squad,
+            st.squad > st.listed ? () => cubit.setWithYou(st.squad - 1) : null,
+            st.squad < st.capacity ? () => cubit.setWithYou(st.squad + 1) : null,
+            'players with you',
+          ),
+          const SizedBox(height: 14),
+          // one seat per player: filled = already with the host, outlined = open
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (var i = 0; i < st.capacity; i++)
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: i < st.squad ? C.brand : Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: i < st.squad ? C.brand : C.dashed, width: 1.5),
+                  ),
+                  child: Icon(
+                    i < st.squad ? LucideIcons.check : LucideIcons.plus,
+                    size: 12,
+                    color: i < st.squad ? Colors.white : C.muted,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            open == 0 ? 'All ${st.capacity} spots filled — your squad is complete.' : '${st.squad} filled · $open open',
+            style: t(12, w: FontWeight.w600, c: open == 0 ? C.green700 : C.mutedInk),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: C.mint, borderRadius: BorderRadius.circular(14)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Total players', style: t(14, w: FontWeight.w600)),
-                Text(
-                  '${st.capacity.isEven ? '${half}v$half · ' : ''}including you · max ${st.maxPlayers}',
-                  style: t(12, c: C.muted),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text('${inr(st.args.turfPrice)} ÷ ${st.capacity} players', style: t(13, c: C.mutedInk)),
+                    ),
+                    Text(
+                      '${inr(share)} each',
+                      style: t(15, w: FontWeight.w700, c: C.brand),
+                    ),
+                  ],
                 ),
+                if (open > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    st.isPublic
+                        ? 'Each player who joins pays ${inr(share)} (+ ${inr(st.splitFee)} fee) — '
+                              'up to ${inr(share * open)} back to you for $open spot${open == 1 ? '' : 's'}.'
+                        : 'Turn on "Open to solo players" to let others join and pay ${inr(share)} each.',
+                    style: t(12, c: C.mutedInk, h: 1.4),
+                  ),
+                ],
               ],
             ),
           ),
-          btn('−', false, () => cubit.setCapacity(st.capacity - 1), 'Fewer players'),
-          SizedBox(
-            width: 48,
-            child: Text('${st.capacity}', textAlign: TextAlign.center, style: d(22)),
-          ),
-          btn('+', true, () => cubit.setCapacity(st.capacity + 1), 'More players'),
         ],
       ),
     );
@@ -223,6 +308,16 @@ class _SquadBuilderView extends StatelessWidget {
               f['tag'] == 'guest' ? C.amber : C.blue,
               () => cubit.remove(i),
               index: i + 1,
+            ),
+          if (st.squad > st.listed)
+            _personRow(
+              '+${st.squad - st.listed}',
+              '${st.squad - st.listed} more player${st.squad - st.listed == 1 ? '' : 's'} with you',
+              'With you',
+              C.mint,
+              C.green700,
+              () => cubit.setWithYou(st.listed),
+              index: 99,
             ),
           if (st.openSpots > 0)
             Container(
@@ -502,7 +597,7 @@ class _SquadBuilderView extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           line(LucideIcons.timer, 'You pay the full turf now. Finish payment within 15 minutes or the slot is released.'),
-          line(LucideIcons.users, 'Friends and guests you add play free.'),
+          line(LucideIcons.users, 'You cover the players already with you — they play free.'),
           if (st.openToSolo) ...[
             line(
               LucideIcons.userCheck,
@@ -532,7 +627,7 @@ class _SquadBuilderView extends StatelessWidget {
           const SizedBox(height: 8),
           PriceRow(
             'Players',
-            st.openToSolo ? '${st.capacity} (${st.squad} in squad, ${st.openSpots} open)' : '${st.capacity} · your squad',
+            st.openToSolo ? '${st.capacity} (${st.squad} with you, ${st.openSpots} open)' : '${st.capacity} · your squad',
           ),
           if (st.openToSolo) ...[
             const SizedBox(height: 8),

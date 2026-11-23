@@ -186,7 +186,6 @@ def _int(data, key, error):
 
 
 @transaction.atomic
-@transaction.atomic
 def create_lobby(user, data):
     """Squad Builder. The host pays the whole turf: the slot is held now for HOST_PAY_WINDOW and the held
     booking is returned for checkout. Friends the host adds get an invite and play for ₹0. A public match
@@ -236,6 +235,15 @@ def create_lobby(user, data):
     squad = 1 + len(known) + len(guests)
     if squad > capacity:
         raise ValidationError({"capacity": f"You've added {squad} players — raise the capacity to at least {squad}."})
+    # "Players with you": everyone the host already has, named or not (defaults to just the listed squad)
+    raw = data.get("players_with_you")
+    with_you = squad if raw in (None, "") else _int(data, "players_with_you", "Set how many players you already have.")
+    if with_you < squad:
+        raise ValidationError({"players_with_you": f"You've listed {squad} players — you have at least {squad}."})
+    if with_you > capacity:
+        raise ValidationError({"players_with_you": "You can't have more players than the total."})
+    if with_you >= capacity:  # nobody to recruit: it's the host's own squad
+        is_public, rule = False, "host"
 
     err = check_range(vs, court, day, start, duration)
     if err:
@@ -243,8 +251,8 @@ def create_lobby(user, data):
     turf_price = price_breakdown(vs, start, duration)["slot_amount"]
     lobby = Lobby.objects.create(
         host=user, venue=venue, court=court, sport=vs.sport, date=day, start_hour=start, duration=duration,
-        capacity=capacity, payment_rule=rule, booking_mode=mode, is_public=is_public, turf_price=turf_price,
-        status="draft")
+        capacity=capacity, payment_rule=rule, booking_mode=mode, is_public=is_public,
+        turf_price=turf_price, own_players=with_you - squad, status="draft")
     # hold the slot for the host's payment; the host's share_due is the held booking's total
     booking = create_hold(user, venue, court.pk, vs.sport_id, day, start, duration)
     booking.held_until = timezone.now() + HOST_PAY_WINDOW
@@ -1055,7 +1063,7 @@ def upcoming_public(qs):
     sync(list(qs))
     qs = qs.filter(status__in=("crowdfunding", "locked")).annotate(
         active=Count("members", filter=holds_spot_q("members__"))
-    ).filter(active__lt=F("capacity"))
+    ).filter(active__lt=F("capacity") - F("own_players"))
     return qs.select_related("venue__area", "court", "sport", "host").order_by("date", "start_hour")
 
 
@@ -1065,7 +1073,7 @@ def open_lobby_counts(venue_ids):
     rows = (Lobby.objects.filter(venue_id__in=venue_ids, is_public=True, status__in=("crowdfunding", "locked"))
             .filter(Q(date__gt=now.date()) | Q(date=now.date(), start_hour__gt=now.hour))
             .annotate(active=Count("members", filter=holds_spot_q("members__")))
-            .filter(active__lt=F("capacity")).values_list("venue_id", flat=True))
+            .filter(active__lt=F("capacity") - F("own_players")).values_list("venue_id", flat=True))
     counts = {}
     for vid in rows:
         counts[vid] = counts.get(vid, 0) + 1
@@ -1076,7 +1084,7 @@ def lobby_hours(court, day):
     """{hour: {"lobbies": n, "spots": open spots}} for the slot matrix."""
     out = {}
     for lb in upcoming_public(Lobby.objects.filter(court=court, date=day)):
-        spots = lb.capacity - lb.active
+        spots = lb.capacity - lb.own_players - lb.active
         for h in range(lb.start_hour, lb.end_hour):
             cell = out.setdefault(h, {"lobbies": 0, "spots": 0})
             cell["lobbies"] += 1

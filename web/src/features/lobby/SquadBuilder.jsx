@@ -3,7 +3,7 @@
  *  URL: /squad?venue&sport&court&date&start&dur&price */
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, Plus, Timer, User, UserCheck, UserPlus, Users, X, Zap } from 'lucide-react';
+import { ArrowRight, Check, Minus, Plus, Timer, User, UserCheck, UserPlus, Users, X, Zap } from 'lucide-react';
 import { useSession } from '../../app/session';
 import { routes, useBack } from '../../app/nav';
 import { Shell } from '../../app/Shell';
@@ -58,6 +58,7 @@ function SquadBuilder({ venue, sport, court, date, dateStr, startHour, duration,
 
   const [capacity, setCap] = useState(Math.min(10, Math.max(2, sport?.max_players ?? 10)));
   const [friends, setFriends] = useState([]);
+  const [withYou, setWithYouRaw] = useState(1); // players the host already has, incl. the host and listed friends
   const [isPublic, setPublic] = useState(true);
   const [recent, setRecent] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -69,7 +70,8 @@ function SquadBuilder({ venue, sport, court, date, dateStr, startHour, duration,
   }, []);
 
   // derived — same rules as SquadBuilderState in the Flutter app
-  const squad = 1 + friends.length;
+  const listed = 1 + friends.length;
+  const squad = Math.max(listed, withYou);
   const openSpots = Math.max(0, capacity - squad);
   const openToSolo = isPublic && openSpots > 0;
   const share = Math.ceil(turfPrice / capacity);
@@ -79,19 +81,22 @@ function SquadBuilder({ venue, sport, court, date, dateStr, startHour, duration,
   const dateLabel = eeeDMmm(date);
 
   const setCapacity = (n) => setCap(Math.min(maxPlayers, Math.max(Math.max(2, squad), n)));
+  const setWithYou = (n) => setWithYouRaw(Math.min(capacity, Math.max(listed, n)));
   const add = (f) => {
     setFriends((x) => [...x, f]);
-    setCap((c) => Math.max(c, squad + 1));
+    const have = Math.max(withYou, listed + 1);
+    setWithYouRaw(have);
+    setCap((c) => Math.max(c, have));
   };
   const addKnown = (player) => {
     if (friends.some((f) => f.user_id === player.id)) return toast(`${player.name} is already in your squad.`);
-    if (squad >= maxPlayers) return toast(`The squad is at the ${maxPlayers}-player limit.`);
+    if (listed >= maxPlayers) return toast(`The squad is at the ${maxPlayers}-player limit.`);
     add({ tag: 'known', user_id: player.id, name: player.name, initials: player.initials });
   };
   const addGuest = (name) => {
     const n = name.trim();
     if (!n) return toast('Give your guest a name.');
-    if (squad >= maxPlayers) return toast(`The squad is at the ${maxPlayers}-player limit.`);
+    if (listed >= maxPlayers) return toast(`The squad is at the ${maxPlayers}-player limit.`);
     add({ tag: 'guest', name: n, initials: n[0].toUpperCase() });
   };
 
@@ -106,6 +111,7 @@ function SquadBuilder({ venue, sport, court, date, dateStr, startHour, duration,
         start_hour: startHour,
         duration,
         capacity,
+        players_with_you: squad,
         is_public: openToSolo,
         friends: friends.map((f) => (f.tag === 'guest' ? { tag: 'guest', name: f.name } : { tag: 'known', user_id: f.user_id })),
       });
@@ -153,35 +159,99 @@ function SquadBuilder({ venue, sport, court, date, dateStr, startHour, duration,
     </CardBox>
   );
 
-  const stepBtn = (label, primary, onClick, aria) => (
+  const stepBtn = (Icon, primary, onClick, aria) => (
     <button
       aria-label={aria}
       className="tap"
-      onClick={onClick}
+      disabled={!onClick}
+      onClick={onClick ?? undefined}
       style={{
-        width: 40,
-        height: 40,
+        width: 38,
+        height: 38,
         borderRadius: 12,
+        display: 'grid',
+        placeItems: 'center',
+        opacity: onClick ? 1 : 0.35,
+        transition: 'opacity 150ms',
         background: primary ? C.brand : C.ground,
         border: primary ? 'none' : `1px solid ${C.line}`,
-        ...t(20, { w: 700, c: primary ? '#fff' : C.ink, h: 1 }),
       }}
     >
-      {label}
+      <Icon size={18} color={primary ? '#fff' : C.ink} />
     </button>
+  );
+  const stepper = (title, sub, value, minus, plus, what) => (
+    <div style={{ display: 'flex', alignItems: 'center' }}>
+      <div style={{ flex: 1 }}>
+        <div style={t(14, { w: 600 })}>{title}</div>
+        <div style={t(12, { c: C.muted })}>{sub}</div>
+      </div>
+      {stepBtn(Minus, false, minus, `Fewer ${what}`)}
+      <span style={{ width: 46, textAlign: 'center', ...d(22) }}>{value}</span>
+      {stepBtn(Plus, true, plus, `More ${what}`)}
+    </div>
   );
 
   const capacityCard = (
-    <CardBox padding={14} shadowCss={null} border={`1px solid ${C.line}`} style={{ display: 'flex', alignItems: 'center' }}>
-      <div style={{ flex: 1 }}>
-        <div style={t(14, { w: 600 })}>Total players</div>
-        <div style={t(12, { c: C.muted })}>
-          {capacity % 2 === 0 ? `${half}v${half} · ` : ''}including you · max {maxPlayers}
-        </div>
+    <CardBox padding={14} shadowCss={null} border={`1px solid ${C.line}`}>
+      {stepper(
+        'Total players',
+        `${capacity % 2 === 0 ? `${half}v${half} · ` : ''}including you · max ${maxPlayers}`,
+        capacity,
+        capacity > Math.max(2, squad) ? () => setCapacity(capacity - 1) : null,
+        capacity < maxPlayers ? () => setCapacity(capacity + 1) : null,
+        'players',
+      )}
+      <div style={{ height: 1, background: C.line, margin: '12px 0' }} />
+      {stepper(
+        'Already with you',
+        "You + players you're bringing",
+        squad,
+        squad > listed ? () => setWithYou(squad - 1) : null,
+        squad < capacity ? () => setWithYou(squad + 1) : null,
+        'players with you',
+      )}
+      {/* one seat per player: filled = already with the host, outlined = open */}
+      <div style={{ marginTop: 14, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {Array.from({ length: capacity }, (_, i) => {
+          const on = i < squad;
+          return (
+            <span
+              key={i}
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: 999,
+                display: 'grid',
+                placeItems: 'center',
+                background: on ? C.brand : '#fff',
+                border: `1.5px solid ${on ? C.brand : C.dashed}`,
+                transition: 'background 180ms, border-color 180ms',
+              }}
+            >
+              {on ? <Check size={12} color="#fff" /> : <Plus size={12} color={C.muted} />}
+            </span>
+          );
+        })}
       </div>
-      {stepBtn('−', false, () => setCapacity(capacity - 1), 'Fewer players')}
-      <span style={{ width: 48, textAlign: 'center', ...d(22) }}>{capacity}</span>
-      {stepBtn('+', true, () => setCapacity(capacity + 1), 'More players')}
+      <div style={{ marginTop: 8, ...t(12, { w: 600, c: openSpots === 0 ? C.green700 : C.mutedInk }) }}>
+        {openSpots === 0 ? `All ${capacity} spots filled — your squad is complete.` : `${squad} filled · ${openSpots} open`}
+      </div>
+      <div style={{ marginTop: 12, padding: 12, borderRadius: 14, background: C.mint }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <span style={{ flex: 1, ...t(13, { c: C.mutedInk }) }}>
+            {inr(turfPrice)} ÷ {capacity} players
+          </span>
+          <span style={t(15, { w: 700, c: C.brand })}>{inr(share)} each</span>
+        </div>
+        {openSpots > 0 && (
+          <div style={{ marginTop: 4, ...t(12, { c: C.mutedInk, h: 1.4 }) }}>
+            {isPublic
+              ? `Each player who joins pays ${inr(share)} (+ ${inr(splitFee)} fee) — up to ${inr(share * openSpots)} back to you for ${openSpots} spot${openSpots === 1 ? '' : 's'}.`
+              : `Turn on "Open to solo players" to let others join and pay ${inr(share)} each.`}
+          </div>
+        )}
+      </div>
     </CardBox>
   );
 
@@ -216,6 +286,8 @@ function SquadBuilder({ venue, sport, court, date, dateStr, startHour, duration,
           i + 1,
         ),
       )}
+      {squad > listed &&
+        person(`+${squad - listed}`, `${squad - listed} more player${squad - listed === 1 ? '' : 's'} with you`, 'With you', C.mint, C.green700, () => setWithYouRaw(listed), 99)}
       {openSpots > 0 && (
         <div style={{ marginTop: 6, padding: '10px 12px', borderRadius: 12, background: C.ground, display: 'flex', alignItems: 'center', gap: 8, ...t(13, { c: C.mutedInk }) }}>
           <UserPlus size={16} color={C.muted} />
@@ -305,7 +377,7 @@ function SquadBuilder({ venue, sport, court, date, dateStr, startHour, duration,
     <div style={{ marginTop: 16, padding: '14px 14px 4px', borderRadius: 16, background: C.mint }}>
       <div style={{ marginBottom: 10, ...t(14, { w: 700, c: C.brand }) }}>How it works</div>
       {howLine(Timer, 'You pay the full turf now. Finish payment within 15 minutes or the slot is released.')}
-      {howLine(Users, 'Friends and guests you add play free.')}
+      {howLine(Users, 'You cover the players already with you — they play free.')}
       {openToSolo && (
         <>
           {howLine(
@@ -321,7 +393,7 @@ function SquadBuilder({ venue, sport, court, date, dateStr, startHour, duration,
   const summary = (
     <CardBox color={C.ground} shadowCss={null} border={`1px solid ${C.line}`} style={{ display: 'grid', gap: 8 }}>
       <PriceRow k={`Turf · ${duration} hr${duration === 1 ? '' : 's'}`} v={inr(turfPrice)} />
-      <PriceRow k="Players" v={openToSolo ? `${capacity} (${squad} in squad, ${openSpots} open)` : `${capacity} · your squad`} />
+      <PriceRow k="Players" v={openToSolo ? `${capacity} (${squad} with you, ${openSpots} open)` : `${capacity} · your squad`} />
       {openToSolo && <PriceRow k="Each solo player pays" v={`${inr(share)} + ${inr(splitFee)} fee`} />}
       <div style={{ height: 4 }} />
       <PriceRow k="You pay now (+ booking fee)" v={inr(hostPaysNow)} bold top />
@@ -355,7 +427,7 @@ function SquadBuilder({ venue, sport, court, date, dateStr, startHour, duration,
           <div style={{ minWidth: 0 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
               <div>
-                <Label style={{ padding: '0 0 10px' }}>Team capacity</Label>
+                <Label style={{ padding: '0 0 10px' }}>Players</Label>
                 {capacityCard}
                 <div style={{ height: 16 }} />
                 {publicToggle}
@@ -382,7 +454,7 @@ function SquadBuilder({ venue, sport, court, date, dateStr, startHour, duration,
       {header}
       <div style={{ padding: '0 20px 24px' }}>
         {slotCard}
-        <Label style={{ padding: '20px 0 10px' }}>Team capacity</Label>
+        <Label style={{ padding: '20px 0 10px' }}>Players</Label>
         {capacityCard}
         <Label style={{ padding: '20px 0 10px' }}>Your squad</Label>
         {squadCard}
