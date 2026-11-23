@@ -1,4 +1,5 @@
 /** Player routes that aren't loaded up front (code-split from the first screen). */
+
 import { Navigate, Route, Routes } from 'react-router-dom';
 import VenueDetails from './features/venue/VenueDetails';
 import SlotBooking from './features/booking/SlotBooking';

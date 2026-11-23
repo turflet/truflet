@@ -4,6 +4,7 @@ from django.contrib import admin
 from django.urls import include, path
 from rest_framework_simplejwt.views import TokenRefreshView
 
+
 from accounts import api as accounts
 from bookings import api as bookings
 from community import api as community
