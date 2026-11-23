@@ -1,9 +1,13 @@
 """Match rules. API views stay thin and call these.
 
 Lifecycle of a lobby
-- Host pays upfront (Host covers all, or Split + Book & recover): `draft` → host pays the slot hold → `locked`.
-- Split + Crowdfund first: `crowdfunding` (the turf calendar is NOT blocked) → pool reaches the turf price →
-  the slot is booked from the pool → `locked`.
+- New matches: the host pays the whole turf when creating it. `draft` (slot held for HOST_PAY_WINDOW) → host
+  pays → `locked`; unpaid by then → `cancelled` and the slot is released. Friends the host adds play for ₹0.
+  A public match lists its open spots: solo players request, the host approves, and approved players pay an
+  equal share (recovered to the host through escrow). Approval doesn't reserve a spot — the first to pay
+  gets it; once the match is full the rest are released. Unanswered requests lapse after REQUEST_TTL.
+- Older lobbies may still be Split + Crowdfund first: `crowdfunding` (the turf calendar is NOT blocked) →
+  pool reaches the turf price → the slot is booked from the pool → `locked`.
 - `locked` → match ends → `completed`. Any state can end in `cancelled` / `expired`.
 
 Timers (15-min payment window, slot conflicts, unfilled alerts, payout release) are applied lazily by
@@ -24,9 +28,11 @@ from core.models import AppConfig, SupportTicket
 from notifications import service as notifications
 from payments import service as payments
 
-from .models import JoinRequest, Lobby, LobbyMember, LobbyMessage
+from .models import JoinRequest, Lobby, LobbyMember, LobbyMessage, holds_spot_q
 
-PAY_WINDOW = timedelta(minutes=15)       # approved solo players must pay within this
+PAY_WINDOW = timedelta(minutes=15)       # older lobbies: friends who accepted must pay within this
+HOST_PAY_WINDOW = timedelta(minutes=15)  # the host pays the whole turf within this or the match is cancelled
+REQUEST_TTL = timedelta(hours=2)         # unanswered join requests lapse; approved players can pay within it
 UNFILLED_ALERT_MINUTES = 60              # crowdfunding lobby not full this close to kickoff → alert host
 LATE_DROP_MINUTES = 30                   # leaving later than this is non-refundable
 GEOFENCE_METRES = 150
@@ -180,10 +186,12 @@ def _int(data, key, error):
 
 
 @transaction.atomic
+@transaction.atomic
 def create_lobby(user, data):
-    """Squad Builder. Creates the lobby only — nothing is charged or held here. A Book & Recover host
-    locks the turf later from the Match Room (`lock_turf`); known friends get an invite to accept."""
-    from bookings.services import check_range, price_breakdown, resolve
+    """Squad Builder. The host pays the whole turf: the slot is held now for HOST_PAY_WINDOW and the held
+    booking is returned for checkout. Friends the host adds get an invite and play for ₹0. A public match
+    recruits solo players for its open spots, who pay an equal share back to the host once approved."""
+    from bookings.services import check_range, create_hold, price_breakdown, resolve
     from venues.models import Venue
     venue = Venue.objects.filter(pk=data.get("venue"), is_active=True).first()
     if not venue:
@@ -199,11 +207,12 @@ def create_lobby(user, data):
     capacity = _int(data, "capacity", "Set the total number of players.")
     vs, court = resolve(venue, data.get("court"), data.get("sport"))
 
-    rule = data.get("payment_rule") if data.get("payment_rule") in dict(Lobby.RULES) else "split"
-    mode = data.get("booking_mode") if data.get("booking_mode") in dict(Lobby.MODES) else "book_recover"
-    if rule == "host":
-        mode = "book_recover"  # the host pays the slot now
     is_public = bool(data.get("is_public"))
+    # No split / crowdfund choice any more: the host always pays the turf up front. Solo players who join a
+    # public match pay a share that recovers the host's money ("split" + "book_recover"); a private match is
+    # the host's own squad ("host").
+    rule = "split" if is_public else "host"
+    mode = "book_recover"
 
     if capacity < 2 or capacity > vs.max_players:
         raise ValidationError({"capacity": f"Pick between 2 and {vs.max_players} players for {vs.sport.name}."})
@@ -227,43 +236,31 @@ def create_lobby(user, data):
     squad = 1 + len(known) + len(guests)
     if squad > capacity:
         raise ValidationError({"capacity": f"You've added {squad} players — raise the capacity to at least {squad}."})
-    if not is_public and squad < capacity and rule != "host":
-        # private split squad: players the host didn't name are the host's guests (the host covers their
-        # shares). When the host pays the whole turf the unnamed players are just their own squad.
-        guests += [f"Guest {len(guests) + i + 1}" for i in range(capacity - squad)]
 
     err = check_range(vs, court, day, start, duration)
     if err:
         raise ValidationError({"slot": err})
     turf_price = price_breakdown(vs, start, duration)["slot_amount"]
-    upfront = rule == "host" or mode == "book_recover"
     lobby = Lobby.objects.create(
         host=user, venue=venue, court=court, sport=vs.sport, date=day, start_hour=start, duration=duration,
         capacity=capacity, payment_rule=rule, booking_mode=mode, is_public=is_public, turf_price=turf_price,
-        status="draft" if upfront else "crowdfunding")
-    fee = split_fee() if rule == "split" else 0
-    share = lobby.share if rule == "split" else 0
-    if upfront:
-        # share_due is set when the host locks the turf (the held booking's total)
-        host = LobbyMember.objects.create(lobby=lobby, user=user, tag="host", status="pending")
-    else:
-        # crowdfund: the host pays their own share plus their guests' shares into the pool
-        host = LobbyMember.objects.create(lobby=lobby, user=user, tag="host", status="pending",
-                                          share_due=share * (1 + len(guests)), fee_due=fee)
-    for friend in known:
-        LobbyMember.objects.create(lobby=lobby, user=friend, tag="known", status="invited",
-                                   share_due=share, fee_due=fee)
+        status="draft")
+    # hold the slot for the host's payment; the host's share_due is the held booking's total
+    booking = create_hold(user, venue, court.pk, vs.sport_id, day, start, duration)
+    booking.held_until = timezone.now() + HOST_PAY_WINDOW
+    booking.save(update_fields=["held_until"])
+    lobby.booking = booking
+    lobby.save(update_fields=["booking", "updated_at"])
+    LobbyMember.objects.create(lobby=lobby, user=user, tag="host", status="pending", share_due=booking.total)
+    for friend in known:  # the host covers friends: they only accept the invite
+        LobbyMember.objects.create(lobby=lobby, user=friend, tag="known", status="invited")
     for name in guests:
         LobbyMember.objects.create(lobby=lobby, guest_name=name, tag="guest", status="confirmed")
 
-    post(lobby, f"{first_name(user)} created the match · {lobby.get_payment_rule_display()}")
-    if upfront:
-        post(lobby, "Turf not booked yet")
-    else:
-        post(lobby, "Crowdfunding · turf books when the pool is full")
-        _pay_card(lobby, host)
+    post(lobby, f"{first_name(user)} created the match · host pays the turf")
+    post(lobby, "Waiting for the host to pay · 15 minutes")
     _send_invites(lobby)
-    return lobby, None
+    return lobby, booking
 
 
 def _send_invites(lobby):
@@ -291,7 +288,7 @@ def accept_invite(lobby, user):
         raise ValidationError({"invite": "There's no open invite for you in this match."})
     if not lobby.is_live or lobby.start_dt <= timezone.now():
         raise ValidationError({"invite": "This match is no longer open."})
-    m.status = "pending" if lobby.is_split else "confirmed"
+    m.status = "pending" if m.amount_due > 0 else "confirmed"
     m.save(update_fields=["status", "updated_at"])
     post(lobby, f"{m.display_name} joined")
     if m.status == "pending" and lobby.status in ("crowdfunding", "locked"):
@@ -348,7 +345,7 @@ def on_booking_paid(booking):
         host.save()
         lobby.status = "locked"
         lobby.save(update_fields=["status", "updated_at"])
-        post(lobby, f"Turf locked 🔒 · {booking.code}" + ("" if lobby.is_split else " · host covers all"))
+        post(lobby, f"Turf locked 🔒 · {booking.code}" + (" · open to players" if lobby.is_public else ""))
         _invite_known(lobby)
 
 
@@ -395,13 +392,20 @@ def sync(lobbies):
 def sync_one(lobby):
     from bookings.models import Booking
     now = timezone.now()
-    # 15-minute payment window
+    # payment windows: approved solo players (and, in older lobbies, friends who accepted)
     for m in lobby.members.filter(status="pending", pay_by__lt=now).select_related("user"):
         m.status = "removed"
         m.save(update_fields=["status", "updated_at"])
-        post(lobby, f"{m.display_name} didn't pay in time · spot open")
-        if m.user_id:
-            notifications.notify(m.user_id, "Payment window expired", f"Your spot at {lobby.venue.name} was released.", "match")
+        if m.tag == "solo":
+            post(lobby, f"{m.display_name}'s approval lapsed · didn't pay")
+            notifications.notify(m.user_id, "Approval expired", f"You didn't pay for {lobby.venue.name} in time.", "match")
+        else:
+            post(lobby, f"{m.display_name} didn't pay in time · spot open")
+            if m.user_id:
+                notifications.notify(m.user_id, "Payment window expired", f"Your spot at {lobby.venue.name} was released.", "match")
+    # unanswered join requests lapse after REQUEST_TTL (or at kickoff)
+    for req in lobby.requests.filter(status="pending").filter(Q(expires_at__lt=now) | Q(expires_at=None, updated_at__lt=now - REQUEST_TTL)):
+        _expire_request(lobby, req, now)
     if lobby.booking_id:
         Booking.sync_statuses(Booking.objects.filter(pk=lobby.booking_id))
         lobby.booking.refresh_from_db()
@@ -409,8 +413,11 @@ def sync_one(lobby):
     if lobby.status == "draft":
         b = lobby.booking
         if b is not None and b.status in ("expired", "cancelled"):
-            lobby.booking = None  # the unpaid hold lapsed; the host can lock the turf again
-            lobby.save(update_fields=["booking", "updated_at"])
+            # the host didn't pay the turf within HOST_PAY_WINDOW: cancel and release the slot
+            _end(lobby, "cancelled", "system", "The host didn't pay the turf in time")
+            notifications.notify(lobby.host_id, "Match cancelled",
+                                 f"{lobby.venue.name} · {when(lobby)} — the turf wasn't paid within 15 minutes.", "match")
+            return
         if now >= lobby.start_dt:
             _end(lobby, "expired", "system", "The host didn't book the turf before kickoff")
             return
@@ -460,6 +467,32 @@ def sync_one(lobby):
             lobby.save(update_fields=["status", "updated_at"])
 
 
+def _expire_request(lobby, req, now):
+    req.status, req.decided_at = "expired", now
+    req.save(update_fields=["status", "decided_at", "updated_at"])
+    post(lobby, "Request expired · the host didn't answer in time", request=req)
+    notifications.notify(req.user_id, "Join request expired", f"{lobby.venue.name} · {when(lobby)}", "match")
+
+
+def _fill_check(lobby):
+    """After a payment: once every spot is taken, release approved players who haven't paid and decline
+    the requests still waiting — the first players to pay got the spots."""
+    if lobby.spots_left > 0:
+        return
+    now = timezone.now()
+    for m in lobby.members.filter(status="pending", tag="solo").select_related("user"):
+        m.status, m.pay_by = "removed", None
+        m.save(update_fields=["status", "pay_by", "updated_at"])
+        notifications.notify(m.user_id, "This match filled up",
+                             f"{lobby.venue.name} · {when(lobby)} — other players paid first. Nothing was charged.", "match")
+    for req in lobby.requests.filter(status="pending").select_related("user"):
+        req.status, req.decided_at = "declined", now
+        req.save(update_fields=["status", "decided_at", "updated_at"])
+        post(lobby, "Match is full", request=req)
+        notifications.notify(req.user_id, "This match filled up", f"{lobby.venue.name} · {when(lobby)}", "match")
+    post(lobby, "Match full 🎉")
+
+
 def _slot_free(lobby, date=None, start=None, court=None):
     from bookings.services import check_range
     from venues.models import VenueSport
@@ -501,13 +534,14 @@ def request_join(lobby, user, note=""):
         raise ValidationError({"lobby": "You're already in this match."})
     if lobby.spots_left <= 0:
         raise ValidationError({"lobby": "This lobby is full."})
-    req, created = JoinRequest.objects.get_or_create(lobby=lobby, user=user)
+    expires = min(timezone.now() + REQUEST_TTL, lobby.start_dt)
+    req, created = JoinRequest.objects.get_or_create(lobby=lobby, user=user, defaults={"expires_at": expires})
     if not created:
         if req.status == "pending":
             return req
-        # declined / withdrawn / removed earlier → the player may ask again (same private thread)
-        req.status, req.decided_at = "pending", None
-        req.save(update_fields=["status", "decided_at", "updated_at"])
+        # declined / withdrawn / expired / removed earlier → the player may ask again (same private thread)
+        req.status, req.decided_at, req.expires_at = "pending", None, expires
+        req.save(update_fields=["status", "decided_at", "expires_at", "updated_at"])
     stats = attendance(user)
     score = f"{stats['score']}% attendance" if stats["score"] is not None else "new player"
     post(lobby, f"{first_name(user)} asked to join · {stats['played']} games · {score}", request=req)
@@ -515,7 +549,7 @@ def request_join(lobby, user, note=""):
     if note:
         post(lobby, note, sender=user, kind="text", request=req)
     notifications.notify(lobby.host_id, f"{first_name(user)} wants to join your match",
-           f"{lobby.venue.name} · {when(lobby)} · review in Requests", "match")
+           f"{lobby.venue.name} · {when(lobby)} · review in Requests within 2 hours", "match")
     return req
 
 
@@ -551,7 +585,9 @@ def decide(req, host, approve):
     member.share_paid = member.fee_paid = 0
     member.escrow, member.paid_at, member.payment_method, member.transaction_id = "none", None, "", ""
     if lobby.is_split:
-        member.status, member.share_due, member.fee_due, member.pay_by = "pending", lobby.share, split_fee(), now + PAY_WINDOW
+        # approval doesn't reserve a spot: the first approved players to pay take the open spots
+        member.status, member.share_due, member.fee_due = "pending", lobby.share, split_fee()
+        member.pay_by = min(now + REQUEST_TTL, lobby.start_dt)
     else:
         member.status, member.share_due, member.fee_due, member.pay_by = "confirmed", 0, 0, None
     member.save()
@@ -561,7 +597,8 @@ def decide(req, host, approve):
     post(lobby, f"{first_name(req.user)} joined (solo)")
     if lobby.is_split:
         _pay_card(lobby, member)
-        body = f"Pay your ₹{member.amount_due} share within 15 minutes to keep your spot."
+        body = (f"Pay your ₹{member.amount_due} share to grab a spot — {lobby.spots_left} left, "
+                "the first players to pay get them.")
     else:
         body = "The host is covering the slot — you're confirmed at ₹0."
     notifications.notify(req.user_id, "You're approved!", f"{lobby.venue.name} · {when(lobby)} · {body}", "match")
@@ -619,6 +656,8 @@ def _pending_share(lobby, user):
                                           if m and m.status == "removed" else "Nothing to pay for this match."})
     if lobby.status not in ("crowdfunding", "locked"):
         raise ValidationError({"payment": "This match isn't collecting payments."})
+    if m.tag == "solo" and lobby.spots_left <= 0:
+        raise ValidationError({"payment": "Too late — the last spot went to a player who paid first."})
     return m
 
 
@@ -650,6 +689,8 @@ def _settle_share(lobby, m, method, txn):
     if lobby.status == "locked" and lobby.booking_mode == "book_recover" and lobby.payout_status == "none":
         lobby.payout_status = "held"
         lobby.save(update_fields=["payout_status", "updated_at"])
+    if m.tag == "solo":
+        _fill_check(lobby)
     if lobby.status == "crowdfunding" and lobby.pooled() >= lobby.turf_price:
         _lock_from_pool(lobby)
     elif lobby.status == "locked" and lobby.payout_status == "settled" and m.tag != "host":
@@ -789,6 +830,8 @@ def on_payment_succeeded(sender, payment, **kwargs):
             return True
         if m.status != "pending" or lobby.status not in ("crowdfunding", "locked") or m.amount_due != payment["amount"]:
             return False  # window closed, match ended or price changed: the money goes back
+        if m.tag == "solo" and lobby.spots_left <= 0:
+            return False  # another player paid first and took the last spot: the money goes back
         _settle_share(lobby, m, "upi", payment["transaction_id"])
         return True
     lobby = Lobby.objects.filter(pk=payment["reference_id"]).first()
@@ -1011,7 +1054,7 @@ def upcoming_public(qs):
           .filter(Q(date__gt=now.date()) | Q(date=now.date(), start_hour__gt=now.hour)))
     sync(list(qs))
     qs = qs.filter(status__in=("crowdfunding", "locked")).annotate(
-        active=Count("members", filter=Q(members__status__in=LobbyMember.HOLDS_SPOT))
+        active=Count("members", filter=holds_spot_q("members__"))
     ).filter(active__lt=F("capacity"))
     return qs.select_related("venue__area", "court", "sport", "host").order_by("date", "start_hour")
 
@@ -1021,7 +1064,7 @@ def open_lobby_counts(venue_ids):
     now = timezone.localtime()
     rows = (Lobby.objects.filter(venue_id__in=venue_ids, is_public=True, status__in=("crowdfunding", "locked"))
             .filter(Q(date__gt=now.date()) | Q(date=now.date(), start_hour__gt=now.hour))
-            .annotate(active=Count("members", filter=Q(members__status__in=LobbyMember.HOLDS_SPOT)))
+            .annotate(active=Count("members", filter=holds_spot_q("members__")))
             .filter(active__lt=F("capacity")).values_list("venue_id", flat=True))
     counts = {}
     for vid in rows:

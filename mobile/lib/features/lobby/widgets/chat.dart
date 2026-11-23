@@ -204,7 +204,7 @@ class PaymentCard extends StatelessWidget {
               paid
                   ? 'Held safely in Turflet escrow.'
                   : open
-                  ? (until != null ? 'Pay within 15 min or the spot reopens' : 'Paid into escrow, never to the host')
+                  ? (until != null ? 'The first players to pay get the open spots' : 'Paid into escrow, never to the host')
                   : 'This spot was released.',
               style: t(12, c: C.muted, h: 1.4),
             ),

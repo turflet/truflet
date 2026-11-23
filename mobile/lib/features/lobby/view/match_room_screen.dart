@@ -646,7 +646,7 @@ class _MatchRoomViewState extends State<_MatchRoomView> {
           bg: C.orangeBg,
           fg: C.orangeInk,
           title: 'Turf not locked yet',
-          body: 'Finish paying for the slot to lock it. The hold expires in a few minutes.',
+          body: 'Pay for the turf within 15 minutes of creating the match, or it\'s cancelled and the slot is released.',
           actions: [act('Pay & lock turf', () => _resumeHostPayment(lobby['held_booking']), primary: true)],
         ),
       );

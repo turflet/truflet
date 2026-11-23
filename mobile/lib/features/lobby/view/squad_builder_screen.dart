@@ -12,8 +12,8 @@ import '../../../core/widgets/widgets.dart';
 import '../../../data/repositories/lobby_repository.dart';
 import '../cubit/squad_builder_cubit.dart';
 
-/// 4 · Squad Builder (Group view): capacity, friends with Known / Guest tags, one-time payment rule,
-/// Open to solo players, and Book & Recover vs Crowdfund.
+/// 4 · Squad Builder (Group view): capacity, friends with Known / Guest tags and Open to solo players.
+/// The host pays the whole turf straight away; accepted solo players pay a share back.
 class SquadBuilderScreen extends StatelessWidget {
   final SquadArgs args;
   const SquadBuilderScreen({super.key, required this.args});
@@ -37,21 +37,14 @@ class _SquadBuilderView extends StatelessWidget {
     try {
       final lobby = await cubit.create();
       if (!context.mounted) return;
-      if (cubit.state.ownSquad) {
-        // Private booking with the host's own players: hold the slot and go straight to payment.
-        final booking = await cubit.lockTurf(lobby['id']);
-        if (context.mounted) await context.replaceWithPayment(booking);
-        return;
+      // The slot is held for 15 minutes: the host pays the whole turf now. Once paid the match is
+      // locked (and listed for solo players when it has open spots).
+      final booking = asMap(lobby['checkout_booking']);
+      if (booking.isNotEmpty) {
+        await context.replaceWithPayment(booking);
+      } else {
+        await context.replaceWithMatch(lobby['id']);
       }
-      // Creating a match never charges anything: the host locks the turf (or pays a pool share)
-      // from the Match Room when ready, and friends get an invite to accept.
-      toast(
-        context,
-        lobby['status'] == 'draft'
-            ? 'Match created. Lock the turf when you\'re ready.'
-            : 'Match created. Pay your share to start the pool.',
-      );
-      await context.replaceWithMatch(lobby['id']);
     } catch (e) {
       if (context.mounted) toast(context, e.toString());
     }
@@ -100,76 +93,8 @@ class _SquadBuilderView extends StatelessWidget {
                   _squad(context, st, cubit),
                   const SizedBox(height: 16),
                   _publicToggle(st, cubit),
-                  if (st.ownSquad) ...[
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(color: C.limeSoft, borderRadius: BorderRadius.circular(16)),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(LucideIcons.lock, size: 18, color: C.green700),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Your own squad: you pay the full turf now and the slot is booked right away. '
-                              'Add friends who are on Turflet to split the cost, or open spots to solo players.',
-                              style: t(13, c: C.mutedInk, h: 1.45),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ] else ...[
-                    const Label('Payment rule · set once', padding: EdgeInsets.fromLTRB(0, 20, 0, 10)),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _option(
-                            st.rule == 'split',
-                            'Split equally',
-                            st.split ? '${inr(st.perHead)} each' : 'Everyone pays a share',
-                            LucideIcons.arrowLeftRight,
-                            () => cubit.setRule('split'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _option(
-                            st.rule == 'host',
-                            'I\'ll pay full',
-                            'Everyone else plays free',
-                            LucideIcons.handCoins,
-                            () => cubit.setRule('host'),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (st.split) ...[
-                      const Label('How to book the turf', padding: EdgeInsets.fromLTRB(0, 20, 0, 10)),
-                      _modeCard(
-                        st,
-                        'book_recover',
-                        'Book & recover',
-                        'Pay ${inr(a.turfPrice)} now to lock the turf. Shares come back to you through escrow as '
-                            'players pay — released when your group checks in.',
-                        LucideIcons.lock,
-                        st.isPrime ? 'Recommended for prime slots' : null,
-                        cubit,
-                      ),
-                      const SizedBox(height: 10),
-                      _modeCard(
-                        st,
-                        'crowdfund',
-                        'Crowdfund first',
-                        'Pay only your share. The turf is booked once the pool covers it — if another group books '
-                            'first or it isn\'t full near kickoff, you choose what to do and paid players are refunded.',
-                        LucideIcons.piggyBank,
-                        st.isPrime ? 'Risky at peak hours' : 'Zero upfront risk',
-                        cubit,
-                      ),
-                    ],
-                  ],
+                  const SizedBox(height: 16),
+                  _howItWorks(st),
                   const SizedBox(height: 20),
                   _summary(st),
                 ],
@@ -182,13 +107,7 @@ class _SquadBuilderView extends StatelessWidget {
                 border: Border(top: BorderSide(color: C.line)),
               ),
               child: PrimaryButton(
-                st.ownSquad
-                    ? 'Book & pay ${inr(a.turfPrice)}'
-                    : st.crowdfund
-                    ? 'Create lobby · pay ${inr(st.hostPaysNow)}'
-                    : st.isPublic && st.openSpots > 0
-                    ? 'Lock turf & publish lobby'
-                    : 'Lock turf · ${inr(a.turfPrice)}',
+                st.openToSolo ? 'Pay ${inr(a.turfPrice)} & publish' : 'Pay ${inr(a.turfPrice)} & book',
                 loading: st.busy,
                 trailing: const Icon(LucideIcons.arrowRight, color: Colors.white, size: 18),
                 onTap: () => _create(context),
@@ -392,39 +311,32 @@ class _SquadBuilderView extends StatelessWidget {
     );
   }
 
-  Widget _personRow(
-    String initials,
-    String name,
-    String tag,
-    Color bg,
-    Color fg,
-    VoidCallback? onRemove, {
-    int index = 0,
-  }) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 5),
-    child: Row(
-      children: [
-        Avatar(initials, size: 32, index: index),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            name,
-            style: t(14, w: FontWeight.w600),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+  Widget _personRow(String initials, String name, String tag, Color bg, Color fg, VoidCallback? onRemove, {int index = 0}) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          children: [
+            Avatar(initials, size: 32, index: index),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                name,
+                style: t(14, w: FontWeight.w600),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Pill(tag, bg: bg, fg: fg),
+            if (onRemove != null)
+              IconButton(
+                onPressed: onRemove,
+                visualDensity: VisualDensity.compact,
+                tooltip: 'Remove',
+                icon: const Icon(LucideIcons.x, size: 16, color: C.muted),
+              ),
+          ],
         ),
-        Pill(tag, bg: bg, fg: fg),
-        if (onRemove != null)
-          IconButton(
-            onPressed: onRemove,
-            visualDensity: VisualDensity.compact,
-            tooltip: 'Remove',
-            icon: const Icon(LucideIcons.x, size: 16, color: C.muted),
-          ),
-      ],
-    ),
-  );
+      );
 
   Future<void> _addFriend(BuildContext context, SquadBuilderCubit cubit) async {
     var busy = false;
@@ -453,17 +365,11 @@ class _SquadBuilderView extends StatelessWidget {
                 Text('Add a friend', style: d(22)),
                 const SizedBox(height: 6),
                 Text(
-                  'Known players are on Turflet: they get an invite and join once they accept.',
+                  'Known players are on Turflet: they get an invite and play free once they accept.',
                   style: t(13, c: C.muted, h: 1.4),
                 ),
                 const SizedBox(height: 14),
-                _field(
-                  contact,
-                  'Email, mobile or referral code',
-                  TextInputType.emailAddress,
-                  autofocus: true,
-                  onSubmit: find,
-                ),
+                _field(contact, 'Email, mobile or referral code', TextInputType.emailAddress, autofocus: true, onSubmit: find),
                 if (error != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
@@ -491,15 +397,9 @@ class _SquadBuilderView extends StatelessWidget {
           children: [
             Text('Add a guest', style: d(22)),
             const SizedBox(height: 6),
-            Text('Guests aren\'t on Turflet. You cover their share.', style: t(13, c: C.muted, h: 1.4)),
+            Text('Guests aren\'t on Turflet. They play free — you\'ve paid the turf.', style: t(13, c: C.muted, h: 1.4)),
             const SizedBox(height: 14),
-            _field(
-              name,
-              'Guest name',
-              TextInputType.name,
-              autofocus: true,
-              onSubmit: () => Navigator.pop(ctx, name.text),
-            ),
+            _field(name, 'Guest name', TextInputType.name, autofocus: true, onSubmit: () => Navigator.pop(ctx, name.text)),
             const SizedBox(height: 12),
             PrimaryButton('Add guest', height: 52, onTap: () => Navigator.pop(ctx, name.text)),
           ],
@@ -511,65 +411,29 @@ class _SquadBuilderView extends StatelessWidget {
     if (err != null) toast(context, err);
   }
 
-  Widget _field(
-    TextEditingController c,
-    String hint,
-    TextInputType type, {
-    bool autofocus = false,
-    VoidCallback? onSubmit,
-  }) => Container(
-    height: 50,
-    padding: const EdgeInsets.symmetric(horizontal: 14),
-    decoration: BoxDecoration(
-      color: C.ground,
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: C.line),
-    ),
-    child: TextField(
-      controller: c,
-      autofocus: autofocus,
-      keyboardType: type,
-      textCapitalization: type == TextInputType.name ? TextCapitalization.words : TextCapitalization.none,
-      style: t(15),
-      onSubmitted: (_) => onSubmit?.call(),
-      decoration: InputDecoration(
-        border: InputBorder.none,
-        hintText: hint,
-        hintStyle: t(15, c: C.muted),
-      ),
-    ),
-  );
-
-  Widget _option(bool on, String title, String sub, IconData icon, VoidCallback onTap) => Choice(
-    selected: on,
-    filled: false,
-    selBg: C.mint,
-    selWidth: 2,
-    height: 96,
-    onTap: onTap,
-    padding: const EdgeInsets.all(12),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 18, color: on ? C.green700 : C.muted),
-            const Spacer(),
-            RadioDot(on),
-          ],
+  Widget _field(TextEditingController c, String hint, TextInputType type, {bool autofocus = false, VoidCallback? onSubmit}) =>
+      Container(
+        height: 50,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: C.ground,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: C.line),
         ),
-        const SizedBox(height: 6),
-        Text(title, style: t(14, w: FontWeight.w700)),
-        Text(
-          sub,
-          style: t(11, c: C.muted),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        child: TextField(
+          controller: c,
+          autofocus: autofocus,
+          keyboardType: type,
+          textCapitalization: type == TextInputType.name ? TextCapitalization.words : TextCapitalization.none,
+          style: t(15),
+          onSubmitted: (_) => onSubmit?.call(),
+          decoration: InputDecoration(
+            border: InputBorder.none,
+            hintText: hint,
+            hintStyle: t(15, c: C.muted),
+          ),
         ),
-      ],
-    ),
-  );
+      );
 
   Widget _publicToggle(SquadBuilderState st, SquadBuilderCubit cubit) {
     final can = st.openSpots > 0;
@@ -612,66 +476,52 @@ class _SquadBuilderView extends StatelessWidget {
     );
   }
 
-  Widget _modeCard(
-    SquadBuilderState st,
-    String id,
-    String title,
-    String body,
-    IconData icon,
-    String? badge,
-    SquadBuilderCubit cubit,
-  ) {
-    final on = st.mode == id;
-    return GestureDetector(
-      onTap: () => cubit.setMode(id),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 140),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: on ? C.mint : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: on ? C.brand : C.line, width: on ? 2 : 1),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 20, color: on ? C.green700 : C.muted),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(title, style: t(14, w: FontWeight.w700)),
-                      if (badge != null)
-                        Pill(
-                          badge,
-                          bg: badge.startsWith('Risky') ? C.orangeSoft : C.lime,
-                          fg: badge.startsWith('Risky') ? C.orangeInk : C.ink,
-                          size: 10,
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(body, style: t(12, c: C.mutedInk, h: 1.45)),
-                ],
-              ),
+  Widget _howItWorks(SquadBuilderState st) {
+    Widget line(IconData icon, String text) => Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 17, color: C.green700),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(text, style: t(13, c: C.mutedInk, h: 1.45)),
+          ),
+        ],
+      ),
+    );
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 4),
+      decoration: BoxDecoration(color: C.mint, borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'How it works',
+            style: t(14, w: FontWeight.w700, c: C.brand),
+          ),
+          const SizedBox(height: 10),
+          line(LucideIcons.timer, 'You pay the full turf now. Finish payment within 15 minutes or the slot is released.'),
+          line(LucideIcons.users, 'Friends and guests you add play free.'),
+          if (st.openToSolo) ...[
+            line(
+              LucideIcons.userCheck,
+              'Your ${st.openSpots} open spot${st.openSpots == 1 ? '' : 's'} go public. Players request to join and you '
+              'accept or decline — requests you don\'t answer expire in 2 hours.',
             ),
-            const SizedBox(width: 8),
-            RadioDot(on),
+            line(
+              LucideIcons.zap,
+              'Accepted players pay ${inr(st.perHead)} each, which comes back to you after check-in. '
+              'The first to pay gets the spot.',
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
 
   Widget _summary(SquadBuilderState st) {
     final a = st.args;
-    final others = st.capacity - 1 - st.guests;
     return CardBox(
       color: C.ground,
       shadow: null,
@@ -682,28 +532,17 @@ class _SquadBuilderView extends StatelessWidget {
           const SizedBox(height: 8),
           PriceRow(
             'Players',
-            st.ownSquad
-                ? '${st.capacity} · your squad'
-                : '${st.capacity} (${st.squad} in squad${st.isPublic && st.openSpots > 0 ? ', ${st.openSpots} open' : ''})',
+            st.openToSolo ? '${st.capacity} (${st.squad} in squad, ${st.openSpots} open)' : '${st.capacity} · your squad',
           ),
-          if (st.split) ...[
+          if (st.openToSolo) ...[
             const SizedBox(height: 8),
-            PriceRow('Each player pays', '${inr(st.share)} + ${inr(st.splitFee)} fee'),
-            if (st.guests > 0) ...[
-              const SizedBox(height: 8),
-              PriceRow('You cover ${st.guests} guest${st.guests == 1 ? '' : 's'}', inr(st.share * st.guests)),
-            ],
+            PriceRow('Each solo player pays', '${inr(st.share)} + ${inr(st.splitFee)} fee'),
           ],
           const SizedBox(height: 12),
-          PriceRow(
-            st.crowdfund ? 'You pay now (into escrow)' : 'You pay now (+ booking fee)',
-            inr(st.hostPaysNow),
-            bold: true,
-            top: true,
-          ),
-          if (st.split && !st.crowdfund && others > 0) ...[
+          PriceRow('You pay now (+ booking fee)', inr(st.hostPaysNow), bold: true, top: true),
+          if (st.openToSolo) ...[
             const SizedBox(height: 6),
-            PriceRow('You recover up to', inr(st.share * others), color: C.green700),
+            PriceRow('You recover up to', inr(st.recoverUpTo), color: C.green700),
           ],
         ],
       ),

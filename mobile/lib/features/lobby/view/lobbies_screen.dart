@@ -283,11 +283,14 @@ class _RequestSheetState extends State<_RequestSheet> {
                 LucideIcons.messageCircle,
                 'A private chat opens with ${g['host']['name']}. The squad chat stays hidden.',
               ),
-              _step(LucideIcons.userCheck, 'The host approves or declines after checking your attendance score.'),
               _step(
-                split ? LucideIcons.timer : LucideIcons.circleCheck,
+                LucideIcons.userCheck,
+                'The host approves or declines after checking your attendance score. No answer in 2 hours and the request expires.',
+              ),
+              _step(
+                split ? LucideIcons.zap : LucideIcons.circleCheck,
                 split
-                    ? 'Once approved, pay your ${inr(g['per_head'])} share within 15 minutes.'
+                    ? 'Once approved, pay your ${inr(g['per_head'])} share. Spots go to the first players who pay.'
                     : 'The host covers the slot — you play free once approved.',
               ),
             ],

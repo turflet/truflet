@@ -252,10 +252,10 @@ function RequestSheet({ lobby: g, close }) {
       </div>
       <CardBox shadowCss={null} border={`1px solid ${C.line}`} padding={14} style={{ marginTop: 14 }}>
         <Step icon={MessageCircle} text={`A private chat opens with ${g.host?.name}. The squad chat stays hidden.`} />
-        <Step icon={UserCheck} text="The host approves or declines after checking your attendance score." />
+        <Step icon={UserCheck} text="The host approves or declines after checking your attendance score. No answer in 2 hours and the request expires." />
         <Step
           icon={split ? Timer : CircleCheck}
-          text={split ? `Once approved, pay your ${inr(g.per_head)} share within 15 minutes.` : 'The host covers the slot — you play free once approved.'}
+          text={split ? `Once approved, pay your ${inr(g.per_head)} share. Spots go to the first players who pay.` : 'The host covers the slot — you play free once approved.'}
         />
       </CardBox>
       <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 14, background: C.ground, border: `1px solid ${C.line}` }}>

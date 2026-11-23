@@ -1,8 +1,9 @@
-/** 4 · Squad Builder: capacity, friends tagged Known / Guest, one-time payment rule, open to solo players,
- *  Book & Recover vs Crowdfund. URL: /squad?venue&sport&court&date&start&dur&price */
+/** 4 · Squad Builder: capacity, friends tagged Known / Guest and open to solo players. The host pays the whole
+ *  turf straight away (within 15 minutes); accepted solo players pay a share back.
+ *  URL: /squad?venue&sport&court&date&start&dur&price */
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeftRight, ArrowRight, HandCoins, Lock, PiggyBank, Plus, User, UserPlus, X } from 'lucide-react';
+import { ArrowRight, Plus, Timer, User, UserCheck, UserPlus, Users, X, Zap } from 'lucide-react';
 import { useSession } from '../../app/session';
 import { routes, useBack } from '../../app/nav';
 import { Shell } from '../../app/Shell';
@@ -12,7 +13,7 @@ import { eeeDMmm, fmtHour, fmtTime, inr } from '../../lib/format';
 import { C, d, t } from '../../theme';
 import { useData, useIsDesktop } from '../../ui/hooks';
 import { useOverlay } from '../../ui/overlay';
-import { Avatar, BackSquare, CardBox, Choice, ErrorRetry, GhostButton, Img, Label, ListSkeleton, Pill, PriceRow, PrimaryButton, RadioDot, Toggle } from '../../ui/kit';
+import { Avatar, BackSquare, CardBox, ErrorRetry, GhostButton, Img, Label, ListSkeleton, Pill, PriceRow, PrimaryButton, Toggle } from '../../ui/kit';
 
 export default function SquadBuilderPage() {
   const [p] = useSearchParams();
@@ -54,12 +55,9 @@ function SquadBuilder({ venue, sport, court, date, dateStr, startHour, duration,
   const { toast, sheet } = useOverlay();
   const splitFee = app.config.split_fee ?? 0;
   const maxPlayers = sport?.max_players ?? 16;
-  const isPrime = startHour >= 18 && startHour < 22;
 
   const [capacity, setCap] = useState(Math.min(10, Math.max(2, sport?.max_players ?? 10)));
   const [friends, setFriends] = useState([]);
-  const [rule, setRule] = useState('split');
-  const [mode, setMode] = useState(isPrime ? 'book_recover' : 'crowdfund');
   const [isPublic, setPublic] = useState(true);
   const [recent, setRecent] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -73,15 +71,11 @@ function SquadBuilder({ venue, sport, court, date, dateStr, startHour, duration,
   // derived — same rules as SquadBuilderState in the Flutter app
   const squad = 1 + friends.length;
   const openSpots = Math.max(0, capacity - squad);
-  const namedGuests = friends.filter((f) => f.tag === 'guest').length;
-  const isPrivate = !isPublic || openSpots === 0;
-  const ownSquad = isPrivate && !friends.some((f) => f.tag === 'known');
-  const guests = namedGuests + (isPublic ? 0 : openSpots);
-  const split = !ownSquad && rule === 'split';
-  const crowdfund = split && mode === 'crowdfund';
+  const openToSolo = isPublic && openSpots > 0;
   const share = Math.ceil(turfPrice / capacity);
-  const hostPaysNow = crowdfund ? share * (1 + guests) + splitFee : turfPrice;
-  const perHead = split ? share + splitFee : 0;
+  const hostPaysNow = turfPrice; // the host always pays the whole turf; friends play free
+  const perHead = openToSolo ? share + splitFee : 0;
+  const recoverUpTo = openToSolo ? share * openSpots : 0;
   const dateLabel = eeeDMmm(date);
 
   const setCapacity = (n) => setCap(Math.min(maxPlayers, Math.max(Math.max(2, squad), n)));
@@ -112,19 +106,12 @@ function SquadBuilder({ venue, sport, court, date, dateStr, startHour, duration,
         start_hour: startHour,
         duration,
         capacity,
-        payment_rule: ownSquad ? 'host' : rule,
-        booking_mode: ownSquad ? 'book_recover' : mode,
-        is_public: isPublic && openSpots > 0,
+        is_public: openToSolo,
         friends: friends.map((f) => (f.tag === 'guest' ? { tag: 'guest', name: f.name } : { tag: 'known', user_id: f.user_id })),
       });
-      if (ownSquad) {
-        // private booking with the host's own players: hold the slot and go straight to payment
-        const booking = asMap((await lobbyRepo.action(lobby.id, 'lock')).checkout_booking);
-        nav(routes.payment(booking.id), { replace: true });
-        return;
-      }
-      toast(lobby.status === 'draft' ? "Match created. Lock the turf when you're ready." : 'Match created. Pay your share to start the pool.');
-      nav(routes.match(lobby.id), { replace: true });
+      // the slot is held for 15 minutes: the host pays the whole turf now
+      const booking = asMap(lobby.checkout_booking);
+      nav(booking.id ? routes.payment(booking.id) : routes.match(lobby.id), { replace: true });
     } catch (e) {
       toast(errText(e));
     } finally {
@@ -143,15 +130,8 @@ function SquadBuilder({ venue, sport, court, date, dateStr, startHour, duration,
 
   const me = app.user ?? {};
   const recentLeft = recent.filter((p) => !friends.some((f) => f.user_id === p.id));
-  const others = capacity - 1 - guests;
   const half = Math.floor(capacity / 2);
-  const ctaLabel = ownSquad
-    ? `Book & pay ${inr(turfPrice)}`
-    : crowdfund
-      ? `Create lobby · pay ${inr(hostPaysNow)}`
-      : isPublic && openSpots > 0
-        ? 'Lock turf & publish lobby'
-        : `Lock turf · ${inr(turfPrice)}`;
+  const ctaLabel = openToSolo ? `Pay ${inr(turfPrice)} & publish` : `Pay ${inr(turfPrice)} & book`;
 
   const slotCard = (
     <CardBox padding={14} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -315,113 +295,37 @@ function SquadBuilder({ venue, sport, court, date, dateStr, startHour, duration,
     </button>
   );
 
-  const option = (on, title, sub, I, onClick) => (
-    <Choice
-      selected={on}
-      selBg={C.mint}
-      selWidth={2}
-      height={96}
-      padding={12}
-      onClick={onClick}
-      style={{ flexDirection: 'column', alignItems: 'stretch', justifyContent: 'center', textAlign: 'left', minWidth: 0 }}
-    >
-      <span style={{ display: 'flex', alignItems: 'center' }}>
-        <I size={18} color={on ? C.green700 : C.muted} />
-        <span style={{ flex: 1 }} />
-        <RadioDot on={on} />
-      </span>
-      <span style={{ marginTop: 6, ...t(14, { w: 700 }) }}>{title}</span>
-      <span className="clamp1" style={t(11, { c: C.muted })}>
-        {sub}
-      </span>
-    </Choice>
-  );
-
-  const modeCard = (id, title, body, I, badge) => {
-    const on = mode === id;
-    const risky = badge?.startsWith('Risky');
-    return (
-      <button
-        aria-pressed={on}
-        className="tap"
-        onClick={() => setMode(id)}
-        style={{
-          width: '100%',
-          padding: 14,
-          borderRadius: 16,
-          background: on ? C.mint : '#fff',
-          border: `${on ? 2 : 1}px solid ${on ? C.brand : C.line}`,
-          display: 'flex',
-          gap: 12,
-          alignItems: 'flex-start',
-          textAlign: 'left',
-          transition: 'all 140ms',
-        }}
-      >
-        <I size={20} color={on ? C.green700 : C.muted} style={{ flex: 'none' }} />
-        <span style={{ flex: 1 }}>
-          <span style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
-            <span style={t(14, { w: 700 })}>{title}</span>
-            {badge && (
-              <Pill bg={risky ? C.orangeSoft : C.lime} fg={risky ? C.orangeInk : C.ink} size={10}>
-                {badge}
-              </Pill>
-            )}
-          </span>
-          <span style={{ display: 'block', marginTop: 4, ...t(12, { c: C.mutedInk, h: 1.45 }) }}>{body}</span>
-        </span>
-        <RadioDot on={on} />
-      </button>
-    );
-  };
-
-  const rules = ownSquad ? (
-    <div style={{ marginTop: 10, padding: 14, borderRadius: 16, background: C.limeSoft, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-      <Lock size={18} color={C.green700} style={{ flex: 'none' }} />
-      <span style={t(13, { c: C.mutedInk, h: 1.45 })}>
-        Your own squad: you pay the full turf now and the slot is booked right away. Add friends who are on Turflet to split the cost, or open spots to solo players.
-      </span>
+  const howLine = (I, text) => (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10 }}>
+      <I size={17} color={C.green700} style={{ flex: 'none', marginTop: 1 }} />
+      <span style={t(13, { c: C.mutedInk, h: 1.45 })}>{text}</span>
     </div>
-  ) : (
-    <>
-      <Label style={{ padding: '20px 0 10px' }}>Payment rule · set once</Label>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        {option(rule === 'split', 'Split equally', split ? `${inr(perHead)} each` : 'Everyone pays a share', ArrowLeftRight, () => setRule('split'))}
-        {option(rule === 'host', "I'll pay full", 'Everyone else plays free', HandCoins, () => setRule('host'))}
-      </div>
-      {split && (
+  );
+  const rules = (
+    <div style={{ marginTop: 16, padding: '14px 14px 4px', borderRadius: 16, background: C.mint }}>
+      <div style={{ marginBottom: 10, ...t(14, { w: 700, c: C.brand }) }}>How it works</div>
+      {howLine(Timer, 'You pay the full turf now. Finish payment within 15 minutes or the slot is released.')}
+      {howLine(Users, 'Friends and guests you add play free.')}
+      {openToSolo && (
         <>
-          <Label style={{ padding: '20px 0 10px' }}>How to book the turf</Label>
-          <div style={{ display: 'grid', gap: 10 }}>
-            {modeCard(
-              'book_recover',
-              'Book & recover',
-              `Pay ${inr(turfPrice)} now to lock the turf. Shares come back to you through escrow as players pay — released when your group checks in.`,
-              Lock,
-              isPrime ? 'Recommended for prime slots' : null,
-            )}
-            {modeCard(
-              'crowdfund',
-              'Crowdfund first',
-              "Pay only your share. The turf is booked once the pool covers it — if another group books first or it isn't full near kickoff, you choose what to do and paid players are refunded.",
-              PiggyBank,
-              isPrime ? 'Risky at peak hours' : 'Zero upfront risk',
-            )}
-          </div>
+          {howLine(
+            UserCheck,
+            `Your ${openSpots} open spot${openSpots === 1 ? '' : 's'} go public. Players request to join and you accept or decline — requests you don't answer expire in 2 hours.`,
+          )}
+          {howLine(Zap, `Accepted players pay ${inr(perHead)} each, which comes back to you after check-in. The first to pay gets the spot.`)}
         </>
       )}
-    </>
+    </div>
   );
 
   const summary = (
     <CardBox color={C.ground} shadowCss={null} border={`1px solid ${C.line}`} style={{ display: 'grid', gap: 8 }}>
       <PriceRow k={`Turf · ${duration} hr${duration === 1 ? '' : 's'}`} v={inr(turfPrice)} />
-      <PriceRow k="Players" v={ownSquad ? `${capacity} · your squad` : `${capacity} (${squad} in squad${isPublic && openSpots > 0 ? `, ${openSpots} open` : ''})`} />
-      {split && <PriceRow k="Each player pays" v={`${inr(share)} + ${inr(splitFee)} fee`} />}
-      {split && guests > 0 && <PriceRow k={`You cover ${guests} guest${guests === 1 ? '' : 's'}`} v={inr(share * guests)} />}
+      <PriceRow k="Players" v={openToSolo ? `${capacity} (${squad} in squad, ${openSpots} open)` : `${capacity} · your squad`} />
+      {openToSolo && <PriceRow k="Each solo player pays" v={`${inr(share)} + ${inr(splitFee)} fee`} />}
       <div style={{ height: 4 }} />
-      <PriceRow k={crowdfund ? 'You pay now (into escrow)' : 'You pay now (+ booking fee)'} v={inr(hostPaysNow)} bold top />
-      {split && !crowdfund && others > 0 && <PriceRow k="You recover up to" v={inr(share * others)} color={C.green700} />}
+      <PriceRow k="You pay now (+ booking fee)" v={inr(hostPaysNow)} bold top />
+      {openToSolo && <PriceRow k="You recover up to" v={inr(recoverUpTo)} color={C.green700} />}
     </CardBox>
   );
 
@@ -523,7 +427,7 @@ function FindPlayer({ close }) {
   return (
     <form onSubmit={(e) => (e.preventDefault(), find())}>
       <div style={d(22)}>Add a friend</div>
-      <div style={{ margin: '6px 0 14px', ...t(13, { c: C.muted, h: 1.4 }) }}>Known players are on Turflet: they get an invite and join once they accept.</div>
+      <div style={{ margin: '6px 0 14px', ...t(13, { c: C.muted, h: 1.4 }) }}>Known players are on Turflet: they get an invite and play free once they accept.</div>
       <div style={{ height: 50, padding: '0 14px', borderRadius: 14, background: C.ground, border: `1px solid ${C.line}`, display: 'flex', alignItems: 'center' }}>
         <input autoFocus value={contact} placeholder="Email, mobile or referral code" onChange={(e) => setContact(e.target.value)} style={t(15)} />
       </div>
@@ -541,7 +445,7 @@ function AddGuest({ close }) {
   return (
     <form onSubmit={(e) => (e.preventDefault(), close(name))}>
       <div style={d(22)}>Add a guest</div>
-      <div style={{ margin: '6px 0 14px', ...t(13, { c: C.muted, h: 1.4 }) }}>Guests aren't on Turflet. You cover their share.</div>
+      <div style={{ margin: '6px 0 14px', ...t(13, { c: C.muted, h: 1.4 }) }}>Guests aren't on Turflet. They play free — you've paid the turf.</div>
       <div style={{ height: 50, padding: '0 14px', borderRadius: 14, background: C.ground, border: `1px solid ${C.line}`, display: 'flex', alignItems: 'center' }}>
         <input autoFocus value={name} placeholder="Guest name" autoCapitalize="words" onChange={(e) => setName(e.target.value)} style={t(15)} />
       </div>

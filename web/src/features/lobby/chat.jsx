@@ -136,7 +136,7 @@ export function PaymentCard({ message, onPay }) {
             </Pill>
           )}
         </div>
-        <div style={{ marginTop: 6, ...t(12, { c: C.muted, h: 1.4 }) }}>{left != null ? 'Pay within 15 min or the spot reopens' : 'Paid into escrow, never to the host'}</div>
+        <div style={{ marginTop: 6, ...t(12, { c: C.muted, h: 1.4 }) }}>{left != null ? 'The first players to pay get the open spots' : 'Paid into escrow, never to the host'}</div>
         <div style={{ height: 10 }} />
         <PrimaryButton height={46} radius={14} shadowOn={false} onClick={onPay}>
           Pay {inr(card.amount)} with UPI

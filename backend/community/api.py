@@ -39,7 +39,7 @@ def slot_state(lobby):
 def lobby_card(lobby, me):
     members = list(lobby.members.select_related("user"))
     active = [m for m in members if m.status in ("pending", "confirmed")]
-    holding = [m for m in members if m.status in LobbyMember.HOLDS_SPOT]  # invited friends keep their spot
+    holding = [m for m in members if m.holds_spot]  # invited friends keep their spot; approved solo players don't
     mine = next((m for m in members if m.user_id and me.is_authenticated and m.user_id == me.id), None)
     req = None
     if me.is_authenticated and not (mine and mine.status in ("pending", "confirmed")):
@@ -89,6 +89,7 @@ def lobby_card(lobby, me):
         "my_role": role,
         "my_request_id": req.id if req else None,
         "invited_by": person(lobby.host, me) if role == "invited" else None,
+        "request_expires_at": req.expires_at.isoformat() if role == "requested" and req.expires_at else None,
     }
 
 
@@ -200,6 +201,9 @@ def _room(request, pk):
     services.sync([lobby])
     lobby.refresh_from_db()
     if not (services.can_enter_room(lobby, request.user) or lobby.host_id == request.user.id):
+        m = services.membership(lobby, request.user)
+        if m and m.tag == "solo" and m.status == "removed" and m.amount_paid == 0 and lobby.spots_left <= 0:
+            raise ValidationError({"lobby": "This match filled up — other players paid first. Nothing was charged."})
         raise ValidationError({"lobby": "Only players in this match can see the Match Room."})
     return lobby
 
@@ -327,7 +331,7 @@ def lobby_messages(request, pk):
 def lobby_requests(request, pk):
     lobby = _host_lobby(request, pk)
     reqs = lobby.requests.select_related("user").order_by("status", "-created_at")
-    return Response([request_payload(r, request.user) for r in reqs if r.status in ("pending", "approved", "declined")])
+    return Response([request_payload(r, request.user) for r in reqs if r.status in ("pending", "approved", "declined", "expired")])
 
 
 def request_payload(req, me):
@@ -336,6 +340,7 @@ def request_payload(req, me):
     return {
         "id": req.id,
         "status": req.status,
+        "expires_at": req.expires_at.isoformat() if req.expires_at and req.status == "pending" else None,
         "lobby": lobby_card(lobby, me),
         "player": {**person(req.user, me), **services.attendance(req.user),
                    "sports": [{"name": ps.sport.name, "level": ps.get_level_display()}

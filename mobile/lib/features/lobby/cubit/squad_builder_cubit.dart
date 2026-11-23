@@ -11,8 +11,6 @@ class SquadBuilderState {
 
   /// `{tag: known|guest, name, initials, user_id?}` — the host is not in this list.
   final List<Json> friends;
-  final String rule; // split | host
-  final String mode; // book_recover | crowdfund
   final bool isPublic;
   final List<Json> recent;
   final bool busy;
@@ -22,8 +20,6 @@ class SquadBuilderState {
     required this.args,
     required this.capacity,
     this.friends = const [],
-    this.rule = 'split',
-    required this.mode,
     this.isPublic = true,
     this.recent = const [],
     this.busy = false,
@@ -35,65 +31,43 @@ class SquadBuilderState {
   int get openSpots => (capacity - squad).clamp(0, 99);
   int get namedGuests => friends.where((f) => f['tag'] == 'guest').length;
 
-  /// Nobody else can join: the host turned off "Open to solo players", or the squad is already full.
-  bool get isPrivate => !isPublic || openSpots == 0;
+  /// Open spots are listed for solo players (the host left "Open to solo players" on and the squad isn't full).
+  bool get openToSolo => isPublic && openSpots > 0;
 
-  /// The host brings their own players and added nobody on Turflet to share the cost with: a plain
-  /// private booking. The host pays the full turf in one go — no payment rule, no lobby to publish.
-  bool get ownSquad => isPrivate && !friends.any((f) => f['tag'] == 'known');
+  /// The host always pays the whole turf up front (the hold adds the booking's convenience fee + GST);
+  /// friends the host adds play free.
+  int get hostPaysNow => args.turfPrice;
 
-  /// Private lobby: spots nobody was named for become the host's guests.
-  int get guests => namedGuests + (isPublic ? 0 : openSpots);
-  bool get split => !ownSquad && rule == 'split';
-  bool get crowdfund => split && mode == 'crowdfund';
+  /// Each solo player's share, paid back to the host once the host accepts them.
   int get share => (args.turfPrice / capacity).ceil();
+  int get perHead => openToSolo ? share + splitFee : 0;
 
-  /// 6 PM – 10 PM: locking the turf upfront is recommended.
-  bool get isPrime => args.startHour >= 18 && args.startHour < 22;
-
-  /// What the host pays right now (the turf hold adds the booking's convenience fee + GST).
-  int get hostPaysNow => crowdfund ? share * (1 + guests) + splitFee : args.turfPrice;
-
-  /// What each other player pays.
-  int get perHead => split ? share + splitFee : 0;
+  /// What the host gets back if every open spot is filled by a paying solo player.
+  int get recoverUpTo => openToSolo ? share * openSpots : 0;
 
   String get dateLabel => DateFormat('EEE, d MMM').format(args.date);
 
-  SquadBuilderState copyWith({
-    int? capacity,
-    List<Json>? friends,
-    String? rule,
-    String? mode,
-    bool? isPublic,
-    List<Json>? recent,
-    bool? busy,
-  }) => SquadBuilderState(
-    args: args,
-    capacity: capacity ?? this.capacity,
-    friends: friends ?? this.friends,
-    rule: rule ?? this.rule,
-    mode: mode ?? this.mode,
-    isPublic: isPublic ?? this.isPublic,
-    recent: recent ?? this.recent,
-    busy: busy ?? this.busy,
-    splitFee: splitFee,
-  );
+  SquadBuilderState copyWith({int? capacity, List<Json>? friends, bool? isPublic, List<Json>? recent, bool? busy}) =>
+      SquadBuilderState(
+        args: args,
+        capacity: capacity ?? this.capacity,
+        friends: friends ?? this.friends,
+        isPublic: isPublic ?? this.isPublic,
+        recent: recent ?? this.recent,
+        busy: busy ?? this.busy,
+        splitFee: splitFee,
+      );
 }
 
-/// 4 · Squad Builder: capacity, friends tagged Known / Guest, one-time payment rule, open to solo
-/// players, and Book & Recover vs Crowdfund.
+/// 4 · Squad Builder: capacity, friends tagged Known / Guest and open to solo players. The host pays the
+/// whole turf right away (within 15 minutes); solo players who are accepted pay a share back.
 class SquadBuilderCubit extends Cubit<SquadBuilderState> {
   final LobbyRepository _repo;
 
   SquadBuilderCubit({required SquadArgs args, required LobbyRepository repository, int splitFee = 0})
     : _repo = repository,
       super(
-        SquadBuilderState(
-          args: args,
-          capacity: (((args.sport['max_players'] as int?) ?? 10).clamp(2, 10)),
-          mode: args.startHour >= 18 && args.startHour < 22 ? 'book_recover' : 'crowdfund',
-          splitFee: splitFee,
-        ),
+        SquadBuilderState(args: args, capacity: (((args.sport['max_players'] as int?) ?? 10).clamp(2, 10)), splitFee: splitFee),
       );
 
   Future<void> loadRecent() async {
@@ -104,8 +78,6 @@ class SquadBuilderCubit extends Cubit<SquadBuilderState> {
   }
 
   void setCapacity(int n) => _emit(state.copyWith(capacity: n.clamp(state.squad.clamp(2, 99), state.maxPlayers)));
-  void setRule(String r) => _emit(state.copyWith(rule: r));
-  void setMode(String m) => _emit(state.copyWith(mode: m));
   void setPublic(bool v) => _emit(state.copyWith(isPublic: v));
 
   /// Returns an error message, or null when added.
@@ -135,10 +107,8 @@ class SquadBuilderCubit extends Cubit<SquadBuilderState> {
   /// Finds a Turflet player by email / mobile / referral code. Throws ApiError.
   Future<Json> lookup(String contact) async => asMap((await _repo.lookup(contact.trim()))['player']);
 
-  /// Own squad: hold the slot right away and return the booking to pay for. Throws ApiError.
-  Future<Json> lockTurf(int lobbyId) async => asMap((await _repo.action(lobbyId, 'lock'))['checkout_booking']);
-
-  /// Creates the lobby. Returns it (with `checkout_booking` when the host pays the turf now). Throws ApiError.
+  /// Creates the match and holds the slot for 15 minutes. Returns it with `checkout_booking` (the held
+  /// booking the host pays now). Throws ApiError.
   Future<Json> create() async {
     _emit(state.copyWith(busy: true));
     try {
@@ -151,9 +121,7 @@ class SquadBuilderCubit extends Cubit<SquadBuilderState> {
         'start_hour': a.startHour,
         'duration': a.duration,
         'capacity': state.capacity,
-        'payment_rule': state.ownSquad ? 'host' : state.rule,
-        'booking_mode': state.ownSquad ? 'book_recover' : state.mode,
-        'is_public': state.isPublic && state.openSpots > 0,
+        'is_public': state.openToSolo,
         'friends': [
           for (final f in state.friends)
             f['tag'] == 'guest' ? {'tag': 'guest', 'name': f['name']} : {'tag': 'known', 'user_id': f['user_id']},

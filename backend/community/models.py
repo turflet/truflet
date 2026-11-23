@@ -18,6 +18,13 @@ from django.utils import timezone
 from core.models import TimeStamped
 
 
+def holds_spot_q(prefix=""):
+    """Members who keep a spot: invited friends, paid players and anyone mid-payment except approved solo
+    players — among those, whoever pays first takes the spot. `prefix` is e.g. "members__" in annotations."""
+    p = prefix
+    return Q(**{f"{p}status__in": ("invited", "confirmed")}) | (Q(**{f"{p}status": "pending"}) & ~Q(**{f"{p}tag": "solo"}))
+
+
 class Lobby(TimeStamped):
     RULES = [("split", "Split equally"), ("host", "Host covers all")]
     MODES = [("book_recover", "Book & recover"), ("crowdfund", "Crowdfund first")]
@@ -116,7 +123,7 @@ class Lobby(TimeStamped):
     def taken(self):
         if self.own_squad:
             return self.capacity
-        return self.members.filter(status__in=LobbyMember.HOLDS_SPOT).count()
+        return self.members.filter(holds_spot_q()).count()
 
     @property
     def spots_left(self):
@@ -174,6 +181,11 @@ class LobbyMember(TimeStamped):
         return self.guest_name or "Guest"
 
     @property
+    def holds_spot(self):
+        """Approved solo players who haven't paid don't reserve a spot: the first of them to pay gets it."""
+        return self.status in ("invited", "confirmed") or (self.status == "pending" and self.tag != "solo")
+
+    @property
     def amount_due(self):
         return self.share_due + self.fee_due
 
@@ -184,11 +196,14 @@ class LobbyMember(TimeStamped):
 
 class JoinRequest(TimeStamped):
     """A solo player's request: a private 1-on-1 thread with the host until approved or declined."""
-    STATUS = [("pending", "Pending"), ("approved", "Approved"), ("declined", "Declined"), ("withdrawn", "Withdrawn")]
+    STATUS = [("pending", "Pending"), ("approved", "Approved"), ("declined", "Declined"), ("withdrawn", "Withdrawn"),
+              ("expired", "Expired")]
     lobby = models.ForeignKey(Lobby, on_delete=models.CASCADE, related_name="requests")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="lobby_requests")
     status = models.CharField(max_length=10, choices=STATUS, default="pending")
     decided_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True,
+                                      help_text="A pending request lapses then if the host hasn't answered")
 
     class Meta:
         ordering = ["-created_at"]

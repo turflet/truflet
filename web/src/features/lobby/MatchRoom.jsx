@@ -451,7 +451,7 @@ export default function MatchRoom() {
     );
   if (isHost && lobby.held_booking != null)
     banners.push(
-      banner('held', LockOpen, C.orangeBg, C.orangeInk, 'Turf not locked yet', 'Finish paying for the slot to lock it. The hold expires in a few minutes.', [
+      banner('held', LockOpen, C.orangeBg, C.orangeInk, 'Turf not locked yet', "Pay for the turf within 15 minutes of creating the match, or it's cancelled and the slot is released.", [
         act('Pay & lock turf', () => nav(routes.payment(lobby.held_booking)), true),
       ]),
     );
