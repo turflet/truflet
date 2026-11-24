@@ -8,6 +8,17 @@ export const DEFAULT_DESC =
   'Book football turfs, box cricket, badminton, pickleball and tennis courts near you. See live slots and prices, split the cost with your squad, and walk in with a QR pass.';
 export const DEFAULT_IMAGE = `${SITE_URL}/images/og-image.jpg`;
 
+export const DEFAULT_IMAGE_ALT = 'A floodlit football turf';
+
+/** Link previews (WhatsApp, Facebook, X, LinkedIn) want a 1200×630 JPEG. Cloudinary images are cropped to
+ *  exactly that on the fly; anything else is returned as-is. */
+export const SHARE_W = 1200;
+export const SHARE_H = 630;
+export const shareImage = (url) =>
+  url && url.includes('res.cloudinary.com') && url.includes('/upload/')
+    ? url.replace(/\/upload\/(?:[a-z]_[^/]*\/)?/, `/upload/c_fill,g_auto,w_${SHARE_W},h_${SHARE_H},f_jpg,q_auto/`)
+    : url;
+
 export const fullTitle = (title) => (title ? `${title} | ${SITE_NAME}` : DEFAULT_TITLE);
 
 // Static per-route tags. Private / transactional screens are noindex so they never show in search.
@@ -100,7 +111,7 @@ export function venueSeo(v) {
   const sports = (v.venue_sports ?? []).map((s) => s.meta || s.name);
   const place = [v.area, v.city].filter(Boolean).join(', ');
   const what = sports.length ? sports.join(', ') : 'sports';
-  const image = v.photos?.[0] || v.image || v.venue_sports?.[0]?.image || undefined;
+  const image = shareImage(v.photos?.[0] || v.image || v.venue_sports?.[0]?.image) || undefined;
   const path = `/venues/${v.id}`;
   const description =
     (v.about && v.about.slice(0, 155)) ||
@@ -113,6 +124,7 @@ export function venueSeo(v) {
     description,
     path,
     image,
+    imageAlt: `${v.name}${place ? `, ${place}` : ''} on Turflet`,
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'SportsActivityLocation',

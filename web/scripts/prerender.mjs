@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_DESC,
   DEFAULT_IMAGE,
+  DEFAULT_IMAGE_ALT,
   ROUTES,
   SITE_URL,
   fullTitle,
@@ -70,6 +71,10 @@ try {
   console.warn(`prerender: API unreachable (${e.message}) — writing static pages only`);
 }
 venues.sort((a, b) => a.name.localeCompare(b.name));
+// /seo/venues/ doesn't carry sport photos; borrow them from /sports/ so a venue without its own photos
+// still gets a relevant preview image (a box cricket photo for a box cricket venue) instead of the default.
+const sportImage = Object.fromEntries(sports.map((s) => [s.slug, s.image]));
+for (const v of venues) v.venue_sports = (v.venue_sports ?? []).map((s) => ({ ...s, image: s.image || sportImage[s.slug] }));
 
 // ------------------------------------------------------------------ html helpers
 
@@ -86,11 +91,15 @@ function setTag(html, re, replacement) {
 }
 
 /** Fill the template's head + #root for one page. */
-function page({ title, description = DEFAULT_DESC, path, image = DEFAULT_IMAGE, jsonLd, body }) {
+function page({ title, description = DEFAULT_DESC, path, image = DEFAULT_IMAGE, imageAlt, jsonLd, body }) {
   const t = esc(fullTitle(title));
   const dsc = esc(description);
   const url = esc(SITE_URL + path);
   const img = esc(image || DEFAULT_IMAGE);
+  const alt = esc(imageAlt || (image && image !== DEFAULT_IMAGE ? fullTitle(title) : DEFAULT_IMAGE_ALT));
+  // The default image and Cloudinary images (see shareImage) are always 1200×630 JPEGs; for anything else
+  // the size and type are unknown, so leave those tags out rather than state them wrongly.
+  const sized = !image || image === DEFAULT_IMAGE || image.includes('/upload/c_fill,g_auto,w_1200,h_630,f_jpg');
   let html = template;
   html = setTag(html, /<title>[^<]*<\/title>/, `<title>${t}</title>`);
   html = setTag(html, /<meta name="description" content="[^"]*" \/>/, `<meta name="description" content="${dsc}" />`);
@@ -99,13 +108,13 @@ function page({ title, description = DEFAULT_DESC, path, image = DEFAULT_IMAGE, 
   html = setTag(html, /<meta property="og:title" content="[^"]*" \/>/, `<meta property="og:title" content="${t}" />`);
   html = setTag(html, /<meta property="og:description" content="[^"]*" \/>/, `<meta property="og:description" content="${dsc}" />`);
   html = setTag(html, /<meta property="og:image" content="[^"]*" \/>/, `<meta property="og:image" content="${img}" />`);
+  html = setTag(html, /<meta property="og:image:secure_url" content="[^"]*" \/>/, `<meta property="og:image:secure_url" content="${img}" />`);
+  html = setTag(html, /<meta property="og:image:alt" content="[^"]*" \/>/, `<meta property="og:image:alt" content="${alt}" />`);
   html = setTag(html, /<meta name="twitter:title" content="[^"]*" \/>/, `<meta name="twitter:title" content="${t}" />`);
   html = setTag(html, /<meta name="twitter:description" content="[^"]*" \/>/, `<meta name="twitter:description" content="${dsc}" />`);
   html = setTag(html, /<meta name="twitter:image" content="[^"]*" \/>/, `<meta name="twitter:image" content="${img}" />`);
-  if (image && image !== DEFAULT_IMAGE) {
-    // Venue photos aren't 1200×630 — drop the fixed dimensions that describe the default image.
-    html = html.replace(/\s*<meta property="og:image:(width|height|alt)" content="[^"]*" \/>/g, '');
-  }
+  html = setTag(html, /<meta name="twitter:image:alt" content="[^"]*" \/>/, `<meta name="twitter:image:alt" content="${alt}" />`);
+  if (!sized) html = html.replace(/\s*<meta property="og:image:(width|height|type)" content="[^"]*" \/>/g, '');
   if (jsonLd) {
     // data-seo="page" lets the app swap it out (lib/seo.js) instead of adding a second copy.
     html = html.replace('</head>', `    <script type="application/ld+json" data-seo="page">${ld(jsonLd)}</script>\n  </head>`);

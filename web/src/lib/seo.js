@@ -2,7 +2,7 @@
  *  canonical URL, robots and Open Graph / Twitter tags, plus optional JSON-LD structured data. */
 import { useEffect } from 'react';
 
-import { DEFAULT_DESC, DEFAULT_IMAGE, ROUTES, fullTitle, SITE_URL } from './seoData.js';
+import { DEFAULT_DESC, DEFAULT_IMAGE, DEFAULT_IMAGE_ALT, ROUTES, fullTitle, SITE_URL } from './seoData.js';
 
 export { DEFAULT_DESC, DEFAULT_IMAGE, DEFAULT_TITLE, SITE_NAME, SITE_URL } from './seoData.js';
 
@@ -36,7 +36,7 @@ function setJsonLd(data) {
   document.head.appendChild(el);
 }
 
-export function applySeo({ title, description = DEFAULT_DESC, path = '/', image = DEFAULT_IMAGE, noindex = false, jsonLd = null }) {
+export function applySeo({ title, description = DEFAULT_DESC, path = '/', image = DEFAULT_IMAGE, imageAlt, noindex = false, jsonLd = null }) {
   const t = fullTitle(title);
   const url = SITE_URL + path;
   document.title = t;
@@ -46,10 +46,14 @@ export function applySeo({ title, description = DEFAULT_DESC, path = '/', image 
   setMeta('property', 'og:title', t);
   setMeta('property', 'og:description', description);
   setMeta('property', 'og:url', url);
+  const alt = imageAlt || (image === DEFAULT_IMAGE ? DEFAULT_IMAGE_ALT : t);
   setMeta('property', 'og:image', image);
+  setMeta('property', 'og:image:secure_url', image);
+  setMeta('property', 'og:image:alt', alt);
   setMeta('name', 'twitter:title', t);
   setMeta('name', 'twitter:description', description);
   setMeta('name', 'twitter:image', image);
+  setMeta('name', 'twitter:image:alt', alt);
   setJsonLd(jsonLd);
 }
 
