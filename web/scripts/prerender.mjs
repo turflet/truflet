@@ -305,4 +305,41 @@ writeFileSync(
   `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`,
 );
 
+// llms.txt (https://llmstxt.org): a plain-Markdown summary for AI assistants and AI search crawlers.
+// Generated from the same live data as the pages so it never drifts out of date.
+{
+  const lines = [
+    '# Turflet',
+    '',
+    `> ${DEFAULT_DESC}`,
+    '',
+    'Turflet is an online booking platform for sports venues in India. Players can see live slot availability and hourly prices, book and pay online, split the cost with their squad (each player pays their own share), and enter with a QR pass. Players who are short of people can join or post open games.',
+    '',
+    sports.length ? `Sports: ${sports.map((s) => s.name).join(', ')}.` : '',
+    cities.length ? `Cities: ${cities.join(', ')}.` : '',
+    '',
+    '## Main pages',
+    '',
+    `- [Book a venue](${SITE_URL}/home): find turfs and courts near you with live slots and prices`,
+    `- [Open games](${SITE_URL}/lobbies): join a game or find players and split the turf cost`,
+    `- [Help and FAQs](${SITE_URL}/help): booking, payments, cancellations and refunds`,
+    `- [Booking and cancellation policy](${SITE_URL}/policy)`,
+    '',
+  ];
+  for (const city of cities) {
+    lines.push(`## Venues in ${city}`, '');
+    lines.push(`- [All turfs and courts in ${city}](${SITE_URL}${landingPath(city)})`);
+    for (const s of sportsIn(city)) lines.push(`- [${sportPhrase(s.slug, s.name)} in ${city}](${SITE_URL}${landingPath(city, s.slug)})`);
+    for (const v of venuesIn(city)) {
+      const facts = [[v.area, v.city].filter(Boolean).join(', '), sportLabel(v), v.price_from ? `from ${inr(v.price_from)}/hr` : '']
+        .filter(Boolean)
+        .join(' · ');
+      lines.push(`- [${v.name}](${SITE_URL}/venues/${v.id}): ${facts}`);
+    }
+    lines.push('');
+  }
+  lines.push('## Optional', '', `- [Privacy policy](${SITE_URL}/privacy)`, `- [Sitemap](${SITE_URL}/sitemap.xml)`, '');
+  writeFileSync(new URL('llms.txt', DIST), lines.filter((l, i, a) => !(l === '' && a[i - 1] === '')).join('\n'));
+}
+
 console.log(`prerender: ${out.length} pages (${venues.length} venues, ${cities.length} cities), sitemap ${urls.length} URLs`);
