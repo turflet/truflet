@@ -26,3 +26,27 @@ class LobbiesCubit extends DataCubit<List<Json>> {
 class MyMatchesCubit extends DataCubit<Json> {
   MyMatchesCubit({required LobbyRepository repository}) : super(repository.mine);
 }
+
+/// Matches → Open lobbies: the city board for the chosen area, filtered by sport.
+class OpenLobbiesCubit extends DataCubit<List<Json>> {
+  final _Filter _filter;
+  OpenLobbiesCubit({required LobbyRepository repository, required int? Function() areaId})
+    : this._(repository, areaId, _Filter());
+  OpenLobbiesCubit._(LobbyRepository repository, int? Function() areaId, _Filter f)
+    : _filter = f,
+      super(() {
+        final area = areaId();
+        return area == null ? Future.value(<Json>[]) : repository.cityLobbies(area, sportId: f.sportId);
+      });
+
+  int? get sportId => _filter.sportId;
+
+  void setSport(int? id) {
+    _filter.sportId = id;
+    reload();
+  }
+}
+
+class _Filter {
+  int? sportId;
+}

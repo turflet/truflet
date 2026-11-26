@@ -1,14 +1,16 @@
 /** Shared match/lobby widgets — mobile/lib/features/lobby/widgets/lobby_widgets.dart + openLobby(). */
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CircleAlert, CircleCheck, Hourglass, Lock, MessageCircle, PiggyBank, ShieldCheck, Sparkles, Timer, UserCheck, X } from 'lucide-react';
+import { CircleAlert, CircleCheck, Hourglass, Lock, MessageCircle, PiggyBank, Sparkles, Timer, UserCheck, X } from 'lucide-react';
+import { ShieldCheck } from '../../ui/icons';
 import { routes, useRequireProfile } from '../../app/nav';
 import { asMap, errText } from '../../lib/api';
 import { lobbyRepo } from '../../lib/repos';
+import { sportScene } from '../../lib/art';
 import { inr } from '../../lib/format';
-import { C, d, shadow, t } from '../../theme';
+import { C, d, t } from '../../theme';
 import { useOverlay } from '../../ui/overlay';
-import { Avatar, CardBox, GhostButton, PrimaryButton, SportPill } from '../../ui/kit';
+import { Avatar, CardBox, GhostButton, Img, PrimaryButton } from '../../ui/kit';
 
 export function SlotStatePill({ lobby, size = 11 }) {
   const map = {
@@ -38,8 +40,8 @@ export function SlotStatePill({ lobby, size = 11 }) {
 }
 
 export const FillBar = ({ taken, capacity, height = 6 }) => (
-  <div style={{ height, borderRadius: 999, background: C.segment, overflow: 'hidden' }}>
-    <div style={{ width: `${capacity ? Math.min(1, taken / capacity) * 100 : 0}%`, height: '100%', background: C.brand, transition: 'width 300ms' }} />
+  <div style={{ height, borderRadius: 999, background: C.chip, overflow: 'hidden' }}>
+    <div style={{ width: `${capacity ? Math.min(1, taken / capacity) * 100 : 0}%`, height: '100%', borderRadius: 999, background: C.green700, transition: 'width 300ms' }} />
   </div>
 );
 
@@ -72,9 +74,11 @@ export function PerHead({ lobby, size = 18 }) {
   );
 }
 
-/** Screen 3 card: host reliability, Turf Locked vs Crowdfunding, filled vs open spots, per-head cost and a role-aware action. */
+/** Lobby card (redesign): sport photo header with the slot state, host + reliability, fill bar, per-head share and a
+ *  role-aware action. */
 export function LobbyCard({ lobby: g, onAction, onClick, showVenue = true }) {
   const host = asMap(g.host);
+  const sport = asMap(g.sport);
   const taken = g.taken ?? 0,
     capacity = g.capacity ?? 0,
     left = g.spots_left ?? 0;
@@ -87,63 +91,100 @@ export function LobbyCard({ lobby: g, onAction, onClick, showVenue = true }) {
   };
   const [label, bg, fg] = roles[role] ?? (left === 0 ? ['Full', C.chip, C.muted] : [role === 'declined' ? 'Request again' : 'Request to join', C.brand, '#fff']);
   const disabled = (role == null || role === 'declined') && left === 0;
+  const photo = sportScene(sport.name);
+  const locked = g.status === 'locked';
+  const where = showVenue ? `${g.venue?.name ?? ''}` : g.court?.name;
   return (
-    <div
+    <article
       role="button"
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(e) => e.key === 'Enter' && onClick?.()}
-      className="tap lift"
-      style={{ padding: 14, borderRadius: 20, background: '#fff', boxShadow: shadow.card, cursor: 'pointer' }}
+      className="lift"
+      style={{ borderRadius: 22, background: '#fff', border: '1px solid #F0EEE8', boxShadow: '0 1px 2px rgba(12,36,25,.05), 0 6px 20px rgba(12,36,25,.07)', overflow: 'hidden', cursor: 'pointer' }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <SportPill sport={asMap(g.sport)} />
-        <SlotStatePill lobby={g} />
-        <span style={{ flex: 1 }} />
-        <PerHead lobby={g} />
-      </div>
-      <div style={{ marginTop: 10, ...d(17) }}>
-        {g.date_label} · {g.time_label}
-      </div>
-      <div className="clamp1" style={{ marginTop: 2, ...t(13, { c: C.muted }) }}>
-        {showVenue ? `${g.venue?.name}, ${g.venue?.area} · ${g.court?.name}` : g.court?.name}
-      </div>
-      <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Avatar initials={host.initials ?? ''} size={28} index={1} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={t(13, { w: 600, c: role === 'invited' ? C.orangeInk : C.ink })}>{role === 'invited' ? `${host.name ?? ''} invited you` : `Hosted by ${host.name ?? ''}`}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, ...t(11, { c: C.green700 }) }}>
-            {host.reliability == null ? <Sparkles size={12} color={C.green700} /> : <ShieldCheck size={12} color={C.green700} />}
-            {reliability(host)}
-          </div>
-        </div>
-      </div>
-      <div style={{ marginTop: 12 }}>
-        <FillBar taken={taken} capacity={capacity} />
-      </div>
-      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <AvatarStack initials={g.avatars ?? []} />
-        <div style={{ flex: 1, ...t(12, { c: C.muted }) }}>
-          {taken}/{capacity} joined · {left === 0 ? 'full' : `${left} spot${left === 1 ? '' : 's'} open`}
-        </div>
-        {onAction && (
-          <span onClick={(e) => e.stopPropagation()}>
-            <GhostButton
-              height={38}
-              radius={12}
-              fontSize={13}
-              bg={bg}
-              fg={fg}
-              border="transparent"
-              onClick={disabled ? undefined : onAction}
-              style={{ opacity: disabled ? 0.7 : 1 }}
-            >
-              {label}
-            </GhostButton>
+      <div style={{ position: 'relative', height: 120 }}>
+        <Img url={photo} alt={sport.name ?? ''} />
+        <span style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(12,36,25,0) 30%, rgba(12,36,25,.85) 100%)' }} />
+        <span
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: 12,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 5,
+            padding: '5px 9px',
+            borderRadius: 999,
+            background: locked ? C.mint : C.coralSoft,
+            ...t(11, { w: 800, c: locked ? C.brand : C.orangeInk, h: 1.2 }),
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: locked ? C.green700 : C.coral }} />
+          {locked ? 'Turf locked' : g.status === 'crowdfunding' ? 'Crowdfunding' : (g.status_label ?? g.status)}
+        </span>
+        <span style={{ position: 'absolute', left: 14, right: 14, bottom: 10, display: 'flex', flexDirection: 'column' }}>
+          <span className="clamp1" style={d(17, { c: '#fff', ls: -0.3 })}>
+            {sport.name}
+            {where ? ` · ${where}` : ''}
           </span>
-        )}
+          <span className="clamp1" style={t(12.5, { w: 600, c: C.mint })}>
+            {g.date_label} · {g.time_label}
+            {showVenue && g.venue?.area ? ` · ${g.venue.area}` : ''}
+          </span>
+        </span>
       </div>
-    </div>
+      <div style={{ padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Avatar initials={host.initials ?? ''} size={38} index={0} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="clamp1" style={t(14, { w: 800, c: role === 'invited' ? C.orangeInk : C.ink })}>
+              {role === 'invited' ? `${host.name ?? ''} invited you` : `${host.name ?? ''} is hosting`}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, ...t(12, { w: 600, c: C.muted }) }}>
+              {host.reliability == null ? <Sparkles size={12} color={C.green700} /> : <ShieldCheck size={12} color={C.green700} />}
+              {reliability(host)}
+            </div>
+          </div>
+          <AvatarStack initials={g.avatars ?? []} size={24} max={4} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', ...t(12.5, { w: 700 }) }}>
+            <span>
+              {taken} of {capacity} joined
+            </span>
+            <span style={{ color: left === 0 ? C.muted : C.orangeInk }}>{left === 0 ? 'Full' : `${left} spot${left === 1 ? '' : 's'} left`}</span>
+          </div>
+          <FillBar taken={taken} capacity={capacity} height={8} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingTop: 12, borderTop: `1px dashed ${C.chipLine}` }}>
+          {(g.per_head ?? 0) > 0 ? (
+            <span style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={d(18, { ls: -0.4 })}>{inr(g.per_head)}</span>
+              <span style={t(11.5, { w: 600, c: C.muted })}>per player · held in escrow</span>
+            </span>
+          ) : (
+            <span style={t(13, { w: 800, c: C.brand })}>Free · host pays</span>
+          )}
+          {onAction && (
+            <span onClick={(e) => e.stopPropagation()}>
+              <GhostButton
+                height={44}
+                radius={14}
+                fontSize={14}
+                bg={bg}
+                fg={fg}
+                border="transparent"
+                onClick={disabled ? undefined : onAction}
+                style={{ opacity: disabled ? 0.7 : 1, fontWeight: 800, padding: '0 16px' }}
+              >
+                {label}
+              </GhostButton>
+            </span>
+          )}
+        </div>
+      </div>
+    </article>
   );
 }
 

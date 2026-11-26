@@ -18,7 +18,7 @@ export default function RequestThread() {
   const lobbyId = Number(useParams().lobbyId);
   const requestId = Number(useParams().requestId);
   const nav = useNavigate();
-  const back = useBack(routes.matches);
+  const back = useBack(`${routes.matches}?tab=mine`);
   const desktop = useIsDesktop();
   const { toast } = useOverlay();
   const [request, setRequest] = useState(null);

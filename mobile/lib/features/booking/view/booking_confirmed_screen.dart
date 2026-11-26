@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../app/router/app_navigation.dart';
+import '../../../app/session/app_cubit.dart';
 import '../../../app/session/app_state.dart';
 import '../../../core/network/json.dart';
 import '../../../core/theme/theme.dart';
@@ -31,181 +33,145 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen> with Si
   Widget build(BuildContext context) {
     final b = widget.booking;
     final top = MediaQuery.of(context).padding.top;
-    return Scaffold(
-      body: Stack(
-        children: [
-          Positioned(
-            top: -140,
-            left: -60,
-            right: -60,
-            child: Container(
-              height: 360,
-              decoration: const BoxDecoration(
-                color: C.limeSoft,
-                borderRadius: BorderRadius.vertical(bottom: Radius.elliptical(255, 180)),
-              ),
-            ),
-          ),
-          Column(
-            children: [
-              Expanded(
-                child: ListView(
-                  padding: EdgeInsets.fromLTRB(20, top + 28, 20, 20),
+    final venue = asMap(b['venue']), sport = asMap(b['sport']), court = asMap(b['court']);
+    final first = '${context.watch<AppCubit>().state.user?['name'] ?? ''}'.trim().split(' ').first;
+    final pin = '${b['checkin_pin'] ?? ''}'.split('').where((x) => x.isNotEmpty).toList();
+    final quick = [
+      (
+        DIcons.directions,
+        'Directions',
+        () => openMaps(venue['lat'], venue['lng'], '${venue['name']} ${venue['address'] ?? ''}'),
+      ),
+      '${venue['phone'] ?? ''}'.isNotEmpty
+          ? (DIcons.phone, 'Call venue', () => callNumber('${venue['phone']}'))
+          : (LucideIcons.qrCode, 'Full ticket', () => context.replaceWithTicket(b['id'])),
+      (DIcons.calendarAdd, 'Add to calendar', () => addToCalendar(b)),
+    ];
+    return LightStatusBar(
+      child: Scaffold(
+        body: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            Container(
+              color: C.brandDark,
+              child: Container(
+                padding: EdgeInsets.fromLTRB(16, top + 30, 16, 76),
+                decoration: const BoxDecoration(
+                  color: C.brand,
+                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.topCenter,
                   children: [
-                    Center(
-                      child: ScaleTransition(
-                        scale: CurvedAnimation(parent: pop, curve: Curves.elasticOut),
-                        child: Container(
-                          width: 84,
-                          height: 84,
-                          decoration: const BoxDecoration(
-                            color: C.brand,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(color: Color(0x26143D2B), spreadRadius: 10),
-                              BoxShadow(color: Color(0x40143D2B), blurRadius: 30, offset: Offset(0, 14)),
+                    Positioned(
+                      top: -top - 30,
+                      left: -16,
+                      right: -16,
+                      height: 180,
+                      child: CustomPaint(painter: _Confetti()),
+                    ),
+                    Column(
+                      children: [
+                        ScaleTransition(
+                          scale: CurvedAnimation(parent: pop, curve: Curves.elasticOut),
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Container(
+                                width: 112,
+                                height: 112,
+                                alignment: Alignment.center,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: RadialGradient(
+                                    center: Alignment(-0.3, -0.4),
+                                    colors: [Colors.white, Color(0xFFDCEBE0), Color(0xFFB9D3C1)],
+                                    stops: [0, 0.7, 1],
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(color: Color(0x59000000), blurRadius: 26, offset: Offset(0, 12)),
+                                  ],
+                                ),
+                                child: Image.asset(
+                                  'assets/images/trophy.png',
+                                  width: 92,
+                                  height: 92,
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                              Positioned(
+                                right: -2,
+                                bottom: 4,
+                                child: Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: C.green700,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: C.brand, width: 3),
+                                  ),
+                                  child: const DIcon(DIcons.check, size: 18, color: Colors.white),
+                                ),
+                              ),
                             ],
                           ),
-                          child: const Icon(LucideIcons.check, color: Colors.white, size: 40),
                         ),
-                      ),
+                        const SizedBox(height: 16),
+                        PanelHeadline(
+                          first.isNotEmpty ? "You're on, " : "You're on",
+                          first.isNotEmpty ? '$first!' : '!',
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Booking confirmed · ${inr(b['total'])} paid${'${b['payment_method_label'] ?? ''}'.isNotEmpty ? ' with ${b['payment_method_label']}' : ''}',
+                          textAlign: TextAlign.center,
+                          style: t(14, w: FontWeight.w600, c: C.panelInk),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 18),
-                    Text('Booking confirmed!', textAlign: TextAlign.center, style: d(28, ls: -0.4)),
-                    const SizedBox(height: 6),
-                    Text(
-                      '${inr(b['total'])} paid via ${b['payment_method_label']}. Details sent to your email.',
-                      textAlign: TextAlign.center,
-                      style: t(14, c: C.muted, h: 1.5),
-                    ),
-                    const SizedBox(height: 18),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: shadowBig,
-                      ),
-                      child: Column(
+                  ],
+                ),
+              ),
+            ),
+            Transform.translate(
+              offset: const Offset(0, -56),
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(26),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x140C2419), blurRadius: 2, offset: Offset(0, 1)),
+                    BoxShadow(color: Color(0x290C2419), blurRadius: 34, offset: Offset(0, 14)),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      height: 96,
+                      child: Stack(
+                        fit: StackFit.expand,
                         children: [
-                          SizedBox(
-                            height: 110,
-                            child: ClipRRect(
-                              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  Img(b['venue']['image']),
-                                  const DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topCenter,
-                                        end: Alignment.bottomCenter,
-                                        stops: [0.2, 1],
-                                        colors: [Colors.transparent, Color(0xA6000000)],
-                                      ),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    left: 16,
-                                    right: 16,
-                                    bottom: 12,
-                                    child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.end,
-                                      children: [
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(b['venue']['name'], style: d(18, c: Colors.white)),
-                                              Text('${b['venue']['area']}, ${b['venue']['city']}', style: t(12, c: Colors.white)),
-                                            ],
-                                          ),
-                                        ),
-                                        const Pill('CONFIRMED', bg: C.lime, fg: C.ink),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
+                          Img(venue['image']),
+                          const DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(colors: [Color(0xD90B2A1D), Color(0x330B2A1D)]),
                             ),
                           ),
                           Padding(
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.symmetric(horizontal: 18),
                             child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  children: [
-                                    Expanded(child: KV('Date', b['date_long'])),
-                                    Expanded(child: KV('Time', b['time_long'])),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text('Court', style: t(11, c: C.muted)),
-                                          const SizedBox(height: 2),
-                                          Text.rich(
-                                            TextSpan(
-                                              style: t(14, w: FontWeight.w700),
-                                              children: [
-                                                TextSpan(text: '${b['court']['name']} · '),
-                                                TextSpan(
-                                                  text: b['sport']['name'],
-                                                  style: t(14, w: FontWeight.w700, c: hex(b['sport']['fg'])),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    Expanded(child: KV('Booking ID', b['code'])),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Perforation(),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 96,
-                                  height: 96,
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: C.line),
-                                  ),
-                                  child: QrImageView(
-                                    data: b['qr_payload'],
-                                    padding: EdgeInsets.zero,
-                                    eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: C.ink),
-                                    dataModuleStyle: const QrDataModuleStyle(
-                                      dataModuleShape: QrDataModuleShape.square,
-                                      color: C.ink,
-                                    ),
-                                    semanticsLabel: 'Check-in QR code',
-                                  ),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text('Show at the counter', style: t(14, w: FontWeight.w700)),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        'Scan this QR at check-in. Please arrive 10 minutes early.',
-                                        style: t(12, c: C.muted, h: 1.5),
-                                      ),
-                                    ],
-                                  ),
+                                Text('${venue['name']}', style: d(18, c: Colors.white, ls: -0.4)),
+                                Text(
+                                  '${court['name']} · ${sport['name']}',
+                                  style: t(12.5, w: FontWeight.w600, c: C.panelInk),
                                 ),
                               ],
                             ),
@@ -213,48 +179,200 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen> with Si
                         ],
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: GhostButton('Add to calendar', icon: LucideIcons.calendarPlus, onTap: () => addToCalendar(b)),
+                    InkWell(
+                      onTap: () => context.replaceWithTicket(b['id']),
+                      child: Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: C.hair),
+                              ),
+                              child: QrImageView(
+                                data: '${b['qr_payload'] ?? b['code']}',
+                                size: 105,
+                                padding: EdgeInsets.zero,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'BOOKING ID',
+                                    style: t(11, w: FontWeight.w800, c: C.muted, ls: 1),
+                                  ),
+                                  Text('${b['code']}', style: t(16, w: FontWeight.w800, ls: 0.5)),
+                                  if (pin.isNotEmpty) ...[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'CHECK-IN PIN',
+                                      style: t(11, w: FontWeight.w800, c: C.muted, ls: 1),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Row(
+                                      children: [
+                                        for (final x in pin)
+                                          Container(
+                                            width: 26,
+                                            height: 32,
+                                            margin: const EdgeInsets.only(right: 4),
+                                            alignment: Alignment.center,
+                                            decoration: BoxDecoration(
+                                              color: C.mint,
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Text(
+                                              x,
+                                              style: t(17, w: FontWeight.w800, c: C.brand, h: 1),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: GhostButton('Invite team', icon: LucideIcons.userPlus, onTap: () => inviteTeam(b)),
-                        ),
-                      ],
+                      ),
+                    ),
+                    const Padding(padding: EdgeInsets.symmetric(horizontal: 18), child: DashedLine(thickness: 1)),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                      child: Column(
+                        children: [
+                          for (final (i, r) in [
+                            (
+                              DIcons.calendar,
+                              '${b['date_long']} · ${b['time_long']}',
+                              'Reach 10 minutes early to check in',
+                            ),
+                            (
+                              DIcons.pin,
+                              '${venue['address'] ?? ''}'.isNotEmpty
+                                  ? '${venue['address']}'
+                                  : '${venue['area']}, ${venue['city']}',
+                              '${venue['area']}, ${venue['city']}',
+                            ),
+                          ].indexed) ...[
+                            if (i > 0) const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Disc(icon: r.$1, size: 40, iconSize: 20),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        r.$2,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: t(14.5, w: FontWeight.w800),
+                                      ),
+                                      Text(
+                                        r.$3,
+                                        style: t(12.5, w: FontWeight.w600, c: C.muted),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + MediaQuery.of(context).padding.bottom / 2),
+            ),
+            Transform.translate(
+              offset: const Offset(0, -34),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   children: [
-                    Expanded(
-                      child: GhostButton(
-                        'Home',
-                        height: 56,
-                        radius: 18,
-                        fontSize: 15,
-                        onTap: () => context.goTab(AppTab.explore),
+                    for (final q in quick)
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: q.$3,
+                          child: Column(
+                            children: [
+                              Disc(icon: q.$1, size: 60, iconSize: 24),
+                              const SizedBox(height: 8),
+                              Text(
+                                q.$2,
+                                textAlign: TextAlign.center,
+                                style: t(12.5, w: FontWeight.w800),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      flex: 2,
-                      child: b['lobby'] != null
-                          ? PrimaryButton('Open Match Room', onTap: () => context.replaceWithMatch(b['lobby']['id']))
-                          : PrimaryButton('View full ticket', onTap: () => context.replaceWithTicket(b['id'])),
-                    ),
                   ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        bottomNavigationBar: Padding(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 22 + MediaQuery.of(context).padding.bottom),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              b['lobby'] != null
+                  ? GoButton('Open Match Room', onTap: () => context.replaceWithMatch(b['lobby']['id']))
+                  : GoButton('Invite your squad', onTap: () => inviteTeam(b)),
+              const SizedBox(height: 6),
+              TextButton(
+                onPressed: () => context.goTab(AppTab.explore),
+                style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                child: Text(
+                  'Back to home',
+                  style: t(15, w: FontWeight.w800, c: C.brand),
                 ),
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
+}
+
+/// Sun and coral confetti over the hero (viewBox 390×180).
+class _Confetti extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final sx = size.width / 390, sy = size.height / 180;
+    final sun = Paint()..color = C.sun, coral = Paint()..color = C.coral;
+    void bit(double x, double y, double w, double h, double deg, Paint p) {
+      canvas.save();
+      canvas.translate(x * sx, y * sy);
+      canvas.rotate(deg * 3.14159 / 180);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(Rect.fromCenter(center: Offset.zero, width: w, height: h), Radius.circular(h / 2)),
+        p,
+      );
+      canvas.restore();
+    }
+
+    bit(57, 42, 10, 5, 30, sun);
+    bit(326, 60, 12, 5, -25, sun);
+    canvas.drawCircle(Offset(300 * sx, 28 * sy), 4, sun);
+    canvas.drawCircle(Offset(86 * sx, 104 * sy), 3.5, coral);
+    bit(274, 120, 9, 4, 50, coral);
+    bit(41, 138, 10, 4, -40, coral);
+    canvas.drawCircle(Offset(352 * sx, 140 * sy), 3, coral);
+  }
+
+  @override
+  bool shouldRepaint(_Confetti old) => false;
 }

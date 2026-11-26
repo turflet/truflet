@@ -16,3 +16,9 @@ String inr(num? n) {
 
 String fmtHour(int h) => '${(h % 12) == 0 ? 12 : h % 12} ${h % 24 < 12 ? 'AM' : 'PM'}';
 String fmtTime(int h) => '${(h % 12) == 0 ? 12 : h % 12}:00 ${h % 24 < 12 ? 'AM' : 'PM'}';
+
+/// 2140 → "2.1k".
+String compact(Object? n) {
+  final v = n is num ? n : num.tryParse('$n') ?? 0;
+  return v >= 1000 ? '${(v / 1000).toStringAsFixed(1)}k' : '${v.round()}';
+}

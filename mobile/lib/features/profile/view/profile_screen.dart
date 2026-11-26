@@ -8,6 +8,7 @@ import '../../../app/session/app_cubit.dart';
 import '../../../app/session/app_state.dart';
 import '../../../core/network/json.dart';
 import '../../../core/theme/theme.dart';
+import '../../../core/utils/art.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../../data/repositories/user_repository.dart';
@@ -107,496 +108,456 @@ class _ProfileViewState extends State<_ProfileView> {
     final s = app.state;
     final u = s.user;
     if (u == null || context.watch<ProfileCubit>().state) return const ProfileSkeleton();
-    final top = MediaQuery.of(context).padding.top;
     final stats = asMap(u['stats']);
     final sports = asList(u['sports']);
-    final area = u['home_area'] == null ? (s.cityName.isNotEmpty ? s.cityName : s.areaName) : u['home_area']['city'];
-    // Header + profile card stay pinned; the sections below scroll (and pull to refresh).
-    return Column(
-      children: [
-        Stack(
-          children: [
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              height: top + 126,
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: C.brand,
-                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
-                ),
+    final name = '${u['name'] ?? ''}'.trim();
+    final parts = name.split(' ');
+    final first = parts.first, last = parts.skip(1).join(' ');
+    final reward = s.config['referral_reward'] ?? 50;
+    final badge = sports.isEmpty ? null : Art.sportThumb(sports.first['name']) ?? sports.first['image'] as String?;
+    final box = BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: C.hair),
+    );
+
+    return RefreshIndicator(
+      color: C.brand,
+      onRefresh: () => context.read<ProfileCubit>().refresh(),
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          Band(
+            title: 'Profile',
+            onBack: () => app.setTab(AppTab.explore),
+            actions: [
+              Material(
+                color: const Color(0x14FFFFFF),
+                shape: const StadiumBorder(side: BorderSide(color: Color(0x24FFFFFF))),
                 clipBehavior: Clip.antiAlias,
-                child: Stack(
-                  children: [
-                    Positioned(
-                      right: -60,
-                      top: -40,
-                      child: Container(
-                        width: 200,
-                        height: 200,
-                        decoration: BoxDecoration(color: C.lime.withValues(alpha: 0.18), shape: BoxShape.circle),
-                      ),
+                child: InkWell(
+                  onTap: () => setState(() => editing = !editing),
+                  child: Container(
+                    height: 40,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    alignment: Alignment.center,
+                    child: Text(
+                      editing ? 'Done' : 'Edit',
+                      style: t(13, w: FontWeight.w800, c: Colors.white),
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-            Column(
-              children: [
-                Padding(
-                  padding: EdgeInsets.fromLTRB(20, top + 16, 20, 14),
-                  child: Row(
+            ],
+            children: [
+              Panel(
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 20),
+                children: [
+                  GestureDetector(
+                    onTap: _editDetails,
+                    child: Column(
+                      children: [
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              width: 88,
+                              height: 88,
+                              alignment: Alignment.center,
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: RadialGradient(
+                                  center: Alignment(-0.3, -0.4),
+                                  colors: [Color(0xFFFF8A65), C.coral, Color(0xFFC23E1C)],
+                                  stops: [0, 0.6, 1],
+                                ),
+                                boxShadow: [BoxShadow(color: Color(0x59000000), blurRadius: 22, offset: Offset(0, 10))],
+                              ),
+                              child: Text('${u['initials'] ?? 'ME'}', style: d(30, c: Colors.white, h: 1)),
+                            ),
+                            Positioned(
+                              right: -4,
+                              bottom: -2,
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: C.brand, width: 3),
+                                ),
+                                child: ClipOval(
+                                  child: badge != null
+                                      ? Img(badge)
+                                      : const Icon(LucideIcons.pencil, size: 14, color: C.brand),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        name.isEmpty
+                            ? Text('Add your name', style: d(26, c: Colors.white, ls: -0.8))
+                            : Text.rich(
+                                TextSpan(
+                                  text: last.isEmpty ? first : '$first ',
+                                  children: [
+                                    if (last.isNotEmpty)
+                                      TextSpan(
+                                        text: last,
+                                        style: d(26, c: C.sun, ls: -0.8).copyWith(fontStyle: FontStyle.italic),
+                                      ),
+                                  ],
+                                ),
+                                textAlign: TextAlign.center,
+                                style: d(26, c: Colors.white, ls: -0.8),
+                              ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${u['email'] ?? ''}${'${u['phone'] ?? ''}'.isNotEmpty ? ' · ${u['phone']}' : ''}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: t(13, w: FontWeight.w600, c: C.panelInk),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Row(
                     children: [
-                      Expanded(
-                        child: Text('My profile', style: d(22, c: Colors.white)),
-                      ),
-                      GhostButton(
-                        editing ? 'Done' : 'Edit profile',
-                        height: 40,
-                        radius: 12,
-                        fontSize: 13,
-                        fg: Colors.white,
-                        bg: Colors.white.withValues(alpha: 0.18),
-                        border: Colors.transparent,
-                        onTap: () => setState(() => editing = !editing),
-                      ),
+                      _stat('${stats['games'] ?? 0}', 'Games played'),
+                      const SizedBox(width: 10),
+                      _stat('${stats['hours'] ?? 0}h', 'On the turf'),
+                      const SizedBox(width: 10),
+                      _stat('${s.saved.length}', 'Saved venues'),
                     ],
                   ),
-                ),
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 20),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: shadowBig,
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+                    child: Row(
+                      children: [
+                        const Disc(icon: DIcons.wallet, size: 46),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Turflet wallet',
+                                style: t(12, w: FontWeight.w700, c: C.muted),
+                              ),
+                              Text(inr(u['wallet_balance']), style: d(22, ls: -0.6)),
+                            ],
+                          ),
+                        ),
+                        GhostButton(
+                          'History',
+                          height: 40,
+                          radius: 12,
+                          fontSize: 13,
+                          bg: C.brand,
+                          fg: Colors.white,
+                          border: Colors.transparent,
+                          onTap: () => app.setTab(AppTab.bookings),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: Column(
-                    children: [
+                ],
+              ),
+            ],
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, 24, 16, 28 + MediaQuery.of(context).padding.bottom),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Rule('Your sports', extra: editing ? 'tap to change level' : null),
+                const SizedBox(height: 12),
+                GridView.count(
+                  crossAxisCount: 4,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: 14,
+                  crossAxisSpacing: 8,
+                  childAspectRatio: 0.66,
+                  children: [
+                    for (var i = 0; i < sports.length; i++) _sportDisc(sports, i),
+                    if (sports.length < s.sports.length)
                       GestureDetector(
-                        onTap: _editDetails,
-                        child: Row(
+                        onTap: () => _addSport(u),
+                        child: Column(
                           children: [
-                            SizedBox(
-                              width: 76,
-                              height: 76,
-                              child: Stack(
-                                clipBehavior: Clip.none,
-                                children: [
-                                  Container(
-                                    width: 72,
-                                    height: 72,
-                                    alignment: Alignment.center,
-                                    decoration: BoxDecoration(color: C.lime, borderRadius: BorderRadius.circular(24)),
-                                    child: Text(u['initials'] ?? 'ME', style: d(26)),
-                                  ),
-                                  Positioned(
-                                    right: 0,
-                                    bottom: 0,
-                                    child: Container(
-                                      width: 26,
-                                      height: 26,
-                                      decoration: BoxDecoration(
-                                        color: C.brand,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: Colors.white, width: 3),
-                                      ),
-                                      child: Icon(
-                                        editing ? LucideIcons.pencil : LucideIcons.check,
-                                        size: 12,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    (u['name'] ?? '').toString().isEmpty ? 'Add your name' : u['name'],
-                                    style: d(20),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    '${(u['handle'] ?? '').toString().isEmpty ? '' : '@${u['handle']} · '}$area',
-                                    style: t(13, c: C.muted),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    '${u['email']} · verified',
-                                    style: t(12, c: C.muted),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
+                            const Disc(icon: LucideIcons.plus, size: 64),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Add',
+                              style: t(12.5, w: FontWeight.w700, c: C.mutedInk),
                             ),
                           ],
                         ),
                       ),
-                      Container(
-                        margin: const EdgeInsets.only(top: 14),
-                        padding: const EdgeInsets.only(top: 12),
-                        decoration: const BoxDecoration(
-                          border: Border(top: BorderSide(color: C.divider)),
-                        ),
-                        child: Row(
-                          children: [
-                            _stat('${stats['games'] ?? 0}', 'Games'),
-                            _stat('${stats['hours'] ?? 0}h', 'Played'),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                  ],
                 ),
-              ],
-            ),
-          ],
-        ),
-        Expanded(
-          child: RefreshIndicator(
-            color: C.brand,
-            onRefresh: app.refreshMe,
-            child: ListView(
-              padding: const EdgeInsets.only(bottom: 20),
-              children: [
-                CardBox(
-                  margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+                const SizedBox(height: 22),
+                const Rule('Your details'),
+                const SizedBox(height: 12),
+                Container(
+                  decoration: box,
+                  clipBehavior: Clip.antiAlias,
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
-                        children: [
-                          const Expanded(child: H2('Personal details', size: 16)),
-                          GestureDetector(
-                            onTap: _editDetails,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              child: Text(
-                                'Edit',
-                                style: t(13, w: FontWeight.w700, c: C.brand),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
                       _detail(LucideIcons.user, 'Name', u['name'], 'Add your name'),
-                      _detail(LucideIcons.mail, 'Email', u['email'], '', verified: true),
-                      _detail(LucideIcons.phone, 'Mobile', u['phone'], 'Add mobile number'),
-                      _detail(LucideIcons.mapPin, 'Address', u['address'], 'Add address (optional)', last: true),
+                      _detail(DIcons.phone, 'Mobile', u['phone'], 'Add mobile number'),
+                      _detail(DIcons.pin, 'Address', u['address'], 'Add address (optional)', last: true),
                     ],
                   ),
                 ),
-                CardBox(
-                  margin: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          const Expanded(child: H2('My sports', size: 16)),
-                          Text(editing ? 'Tap Change to set level' : 'Your sports & levels', style: t(12, c: C.muted)),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      for (var i = 0; i < sports.length; i++) _sportRow(sports, i),
-                      if (sports.isEmpty) Text('Add the sports you play.', style: t(13, c: C.muted)),
-                      if (editing && sports.length < s.sports.length)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: GhostButton(
-                            'Add sport',
-                            icon: LucideIcons.plus,
-                            height: 40,
-                            radius: 12,
-                            fontSize: 13,
-                            onTap: () => _addSport(u),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                CardBox(
-                  margin: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  child: Column(
-                    children: [
-                      _switch(
-                        'Booking & slot notifications',
-                        'Reminders, confirmations and offers',
-                        u['notifications_on'] == true,
-                        () => app.updateMe({'notifications_on': !(u['notifications_on'] == true)}),
-                        false,
-                      ),
-                    ],
-                  ),
-                ),
-                CardBox(
-                  margin: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-                  padding: EdgeInsets.zero,
+                const SizedBox(height: 22),
+                const Rule('Your stuff'),
+                const SizedBox(height: 12),
+                Container(
+                  decoration: box,
+                  clipBehavior: Clip.antiAlias,
                   child: Column(
                     children: [
                       _menu(
-                        Icons.favorite_border,
-                        C.rose,
-                        C.roseSoft,
+                        DIcons.ticket,
+                        'My bookings',
+                        'Upcoming, played and refunds',
+                        () => app.setTab(AppTab.bookings),
+                      ),
+                      _menu(
+                        DIcons.heart,
                         'Saved venues',
-                        '${s.saved.length} venues',
+                        '${s.saved.length} favourite${s.saved.length == 1 ? '' : 's'}',
                         () => context.pushSaved(),
                       ),
                       _menu(
-                        LucideIcons.creditCard,
-                        C.blue,
-                        C.blueSoft,
+                        DIcons.card,
                         'Payments & refunds',
                         'Wallet ${inr(u['wallet_balance'])}',
                         () => app.setTab(AppTab.bookings),
                       ),
                       _menu(
-                        LucideIcons.userPlus,
-                        C.purple,
-                        C.purpleSoft,
-                        'Invite friends',
-                        'Code ${u['referral_code']} · ₹${s.config['referral_reward'] ?? 50} each',
-                        () => SharePlus.instance.share(
-                          ShareParams(
-                            text:
-                                'Join me on Turflet! Use my code ${u['referral_code']} and we both get ₹${s.config['referral_reward'] ?? 50} off.',
-                          ),
-                        ),
+                        DIcons.bell,
+                        'Notifications',
+                        'Lobby invites, reminders, offers',
+                        () => context.pushNotifications(),
                       ),
                       _menu(
-                        LucideIcons.circleHelp,
-                        C.green700,
-                        C.mint,
+                        LucideIcons.bellRing,
+                        'Booking & slot alerts',
+                        u['notifications_on'] == true ? 'On' : 'Off',
+                        () => app.updateMe({'notifications_on': !(u['notifications_on'] == true)}),
+                        trailing: Toggle(u['notifications_on'] == true),
+                      ),
+                      _menu(
+                        LucideIcons.userPlus,
+                        'Invite friends',
+                        'Code ${u['referral_code']} · ₹$reward each',
+                        () => SharePlus.instance.share(
+                          ShareParams(
+                            text: 'Join me on Turflet! Use my code ${u['referral_code']} and we both get ₹$reward off.',
+                          ),
+                        ),
+                        last: true,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 22),
+                const Rule('Support'),
+                const SizedBox(height: 12),
+                Container(
+                  decoration: box,
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    children: [
+                      _menu(
+                        DIcons.help,
                         'Help & support',
-                        'Chat, call, FAQs',
+                        'FAQs, chat with us, call',
                         () => context.pushHelp(),
                       ),
                       _menu(
-                        LucideIcons.shield,
-                        C.teal,
-                        C.tealSoft,
-                        'Privacy & refund policy',
-                        'How we handle data & money',
+                        DIcons.policy,
+                        'Policies',
+                        'Terms, privacy, refunds',
                         () => context.pushPolicy(),
                         last: true,
                       ),
                     ],
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-                  child: GhostButton(
-                    'Log out',
-                    fg: const Color(0xFFB91C1C),
-                    border: const Color(0xFFFECACA),
+                const SizedBox(height: 22),
+                Material(
+                  color: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: const BorderSide(color: C.hair),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
                     onTap: () async {
                       await app.logout();
                       app.setTab(AppTab.explore);
                     },
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text('Turflet v${s.config['app_version'] ?? '1.1'}', style: t(12, c: C.muted)),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _detail(
-    IconData icon,
-    String label,
-    dynamic value,
-    String placeholder, {
-    bool verified = false,
-    bool last = false,
-  }) {
-    final empty = (value ?? '').toString().trim().isEmpty;
-    return InkWell(
-      onTap: verified ? null : _editDetails,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: last
-            ? null
-            : const BoxDecoration(
-                border: Border(bottom: BorderSide(color: C.divider)),
-              ),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(color: C.mint, borderRadius: BorderRadius.circular(10)),
-              child: Icon(icon, size: 17, color: C.green700),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label, style: t(11, c: C.muted)),
-                  const SizedBox(height: 1),
-                  Text(
-                    empty ? placeholder : value.toString(),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: empty ? t(14, w: FontWeight.w600, c: C.brand) : t(14, w: FontWeight.w600),
-                  ),
-                ],
-              ),
-            ),
-            if (verified) ...[
-              const Icon(LucideIcons.badgeCheck, size: 16, color: C.green700),
-              const SizedBox(width: 4),
-              Text(
-                'Verified',
-                style: t(12, w: FontWeight.w600, c: C.green700),
-              ),
-            ] else
-              const Icon(LucideIcons.chevronRight, size: 18, color: C.muted),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _stat(String v, String l, [Color? c]) => Expanded(
-    child: Column(
-      children: [
-        Text(v, style: d(20, c: c ?? C.ink)),
-        Text(l, style: t(11, c: C.muted)),
-      ],
-    ),
-  );
-
-  Widget _sportRow(List<Json> sports, int i) {
-    final sp = sports[i];
-    final lv = _levels[(sp['level'] as int).clamp(0, 2)];
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Img(sp['image'], width: 40, height: 40, radius: BorderRadius.circular(12)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(sp['name'], style: t(14, w: FontWeight.w700)),
+                    child: SizedBox(
+                      height: 50,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const DIcon(DIcons.logout, size: 20, color: C.redInk),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Log out',
+                            style: t(14.5, w: FontWeight.w800, c: C.redInk),
+                          ),
+                        ],
+                      ),
                     ),
-                    Pill(lv.$1, bg: lv.$4, fg: lv.$3, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2)),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween(end: lv.$2),
-                    duration: const Duration(milliseconds: 250),
-                    builder: (_, v, _) =>
-                        LinearProgressIndicator(value: v, minHeight: 6, backgroundColor: C.divider, color: lv.$3),
                   ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Turflet v${s.config['app_version'] ?? '1.1'}',
+                  textAlign: TextAlign.center,
+                  style: t(12, c: C.muted),
                 ),
               ],
             ),
           ),
-          if (editing) ...[
-            const SizedBox(width: 12),
-            GhostButton(
-              'Change',
-              height: 34,
-              radius: 10,
-              fontSize: 12,
-              bg: C.ground,
-              onTap: () {
-                final next = [...sports.map((x) => Map<String, dynamic>.from(x))];
-                next[i]['level'] = ((sp['level'] as int) + 1) % 3;
-                _setSports(next);
-              },
-            ),
-          ],
         ],
       ),
     );
   }
 
-  Widget _switch(String title, String sub, bool on, VoidCallback onTap, bool border) => Semantics(
-    toggled: on,
-    child: InkWell(
-      onTap: onTap,
+  Widget _detail(Object icon, String label, dynamic value, String placeholder, {bool last = false}) {
+    final empty = (value ?? '').toString().trim().isEmpty;
+    return InkWell(
+      onTap: _editDetails,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: border
-            ? const BoxDecoration(
-                border: Border(top: BorderSide(color: C.divider)),
-              )
-            : null,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: last
+            ? null
+            : const BoxDecoration(
+                border: Border(bottom: BorderSide(color: C.hair)),
+              ),
         child: Row(
           children: [
+            Disc(icon: icon, size: 42, iconSize: 20),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: t(14, w: FontWeight.w600)),
-                  Text(sub, style: t(12, c: C.muted)),
+                  Text(
+                    label,
+                    style: t(12, w: FontWeight.w600, c: C.muted),
+                  ),
+                  Text(
+                    empty ? placeholder : value.toString(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: t(14.5, w: FontWeight.w800, c: empty ? C.brand : C.ink),
+                  ),
                 ],
               ),
             ),
-            Toggle(on),
+            const DIcon(DIcons.chevR, size: 18, color: C.radioOff),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _stat(String v, String l) => Expanded(
+    child: PanelTile(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+      child: Column(
+        children: [
+          Text(v, style: d(21, c: C.sun, ls: -0.5)),
+          const SizedBox(height: 2),
+          Text(
+            l,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: t(11.5, w: FontWeight.w700, c: C.panelInk),
+          ),
+        ],
       ),
     ),
   );
 
-  Widget _menu(IconData icon, Color fg, Color bg, String label, String sub, VoidCallback onTap, {bool last = false}) =>
+  Widget _sportDisc(List<Json> sports, int i) {
+    final sp = sports[i];
+    final lv = _levels[(sp['level'] as int).clamp(0, 2)];
+    return GestureDetector(
+      onTap: editing
+          ? () {
+              final next = [...sports.map((x) => Map<String, dynamic>.from(x))];
+              next[i]['level'] = ((sp['level'] as int) + 1) % 3;
+              _setSports(next);
+            }
+          : null,
+      child: Column(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: i == 0 ? const [BoxShadow(color: C.brand, spreadRadius: 3)] : null,
+            ),
+            child: ClipOval(child: Img(Art.sportThumb(sp['name']) ?? sp['image'])),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${sp['name']}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: t(12.5, w: FontWeight.w700, c: C.mutedInk),
+          ),
+          Text(
+            lv.$1.toUpperCase(),
+            maxLines: 1,
+            style: t(10, w: FontWeight.w800, c: lv.$3, ls: 0.3),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _menu(Object icon, String label, String sub, VoidCallback onTap, {bool last = false, Widget? trailing}) =>
       InkWell(
         onTap: onTap,
         child: Container(
-          constraints: const BoxConstraints(minHeight: 62),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           decoration: last
               ? null
               : const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: C.divider)),
+                  border: Border(bottom: BorderSide(color: C.hair)),
                 ),
           child: Row(
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
-                child: Icon(icon, size: 18, color: fg),
-              ),
+              Disc(icon: icon, size: 42, iconSize: 21),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(label, style: t(14, w: FontWeight.w600)),
-                    Text(sub, style: t(12, c: C.muted)),
+                    Text(label, style: t(14.5, w: FontWeight.w800)),
+                    Text(
+                      sub,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t(12, w: FontWeight.w600, c: C.muted),
+                    ),
                   ],
                 ),
               ),
-              const Icon(LucideIcons.chevronRight, size: 18, color: C.muted),
+              trailing ?? const DIcon(DIcons.chevR, size: 18, color: C.radioOff),
             ],
           ),
         ),

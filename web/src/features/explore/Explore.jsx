@@ -1,22 +1,26 @@
 /** 1 · Home / Discovery: auto-expanding radius, sport pills, search, sort & filter (date + time window, price,
- *  amenities), venue cards with open-lobby counts, the city lobby board and the unread badge.
- *  Phone = the Flutter screen. Desktop = hero + sticky filter sidebar + venue grid. */
+ *  amenities), venue cards with open-lobby counts and the city lobby board.
+ *  Phone = dark band + Turfs/Matches tabs + green panel (redesign). Desktop = hero + sticky filter sidebar + venue grid. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUpDown, Bell, ChevronDown, Heart, LocateFixed, MapPin, Radar, Search, SlidersHorizontal, Star } from 'lucide-react';
+import { ArrowUpDown, LocateFixed, Radar } from 'lucide-react';
+import { ChevronDown, Heart, MapPin, Search, SlidersHorizontal, Star, Tag, Zap } from '../../ui/icons';
 import { useSession } from '../../app/session';
 import { routes, useRequireLogin } from '../../app/nav';
 import { Shell } from '../../app/Shell';
 import { asList, asMap, errText } from '../../lib/api';
-import { lobbyRepo, notificationRepo, venueRepo } from '../../lib/repos';
+import { lobbyRepo, venueRepo } from '../../lib/repos';
+import { ART, sportThumb } from '../../lib/art';
 import { addDays, count, eeeD, fmtHour, inr, ymd } from '../../lib/format';
-import { C, d, hex, shadow, t } from '../../theme';
+import { C, d, shadow, t } from '../../theme';
 import { useIsDesktop } from '../../ui/hooks';
 import { useOverlay } from '../../ui/overlay';
-import { CardBox, Choice, ErrorRetry, H2, Img, Pill, PrimaryButton, Sk, SportPill, SquareIconButton } from '../../ui/kit';
+import { CardBox, Choice, ErrorRetry, H2, Img, Pill, PrimaryButton, Sk, SportPill } from '../../ui/kit';
+import { Band, BookingsButton, Panel, PanelHeadline, ProfileButton, RatingBadge, Rule, Script, SectionTabs, UnderlineTabs } from '../../ui/brand';
 
 const sortOrder = ['near', 'price', 'rating'];
 const sortLabels = { near: 'Nearest', price: 'Lowest price', rating: 'Top rated' };
+const sortTabs = { near: ['NEARBY', MapPin], price: ['BUDGET', Tag], rating: ['TOP RATED', Star] };
 const timeWindows = [
   ['Morning', 6, 12],
   ['Afternoon', 12, 16],
@@ -38,7 +42,6 @@ export default function Explore() {
 
   const [venues, setVenues] = useState(null);
   const [error, setError] = useState(null);
-  const [unread, setUnread] = useState(0);
   const [sportId, setSportId] = useState(null);
   const [sort, setSort] = useState('near');
   const [q, setQ] = useState('');
@@ -97,14 +100,6 @@ export default function Explore() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [app.areaId]);
 
-  useEffect(() => {
-    if (app.loggedIn)
-      notificationRepo.list().then(
-        (n) => setUnread(n.unread ?? 0),
-        () => undefined,
-      );
-  }, [app.loggedIn]);
-
   const pickSport = (id) => {
     setSportId(id);
     load({ sportId: id });
@@ -149,10 +144,11 @@ export default function Explore() {
   const city = app.cityName || app.areaName || 'Choose your location';
 
   const sportChips = (
-    <div className="hscroll" style={{ gap: 12, padding: desktop ? '2px 0 8px' : '0 20px' }}>
-      <SportChip label="All" on={sportId == null} fg={C.brand} onClick={() => pickSport(null)} />
+    <div className="hscroll" style={{ gap: 16, padding: '2px 0 8px' }}>
       {app.sports.map((sp) => (
-        <SportChip key={sp.id} label={sp.name} img={sp.image} on={sportId === sp.id} fg={hex(sp.fg)} onClick={() => pickSport(sp.id)} />
+        <span key={sp.id} style={{ width: 84, flex: 'none' }}>
+          <SportDisc label={sp.name} img={sportThumb(sp.name, sp.image)} on={sportId === sp.id} onClick={() => pickSport(sportId === sp.id ? null : sp.id)} />
+        </span>
       ))}
     </div>
   );
@@ -220,7 +216,7 @@ export default function Explore() {
     <>
       {error && <ErrorRetry message={error} onRetry={() => load()} />}
       {venues == null && !error && (
-        <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(auto-fill, minmax(300px, 1fr))' : '1fr', gap: desktop ? 22 : 16, padding: desktop ? 0 : '0 20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(auto-fill, minmax(300px, 1fr))' : '1fr', gap: desktop ? 22 : 18, padding: desktop ? 0 : '0 16px' }}>
           {Array.from({ length: desktop ? 6 : 3 }, (_, i) => (
             <CardBox key={i} padding={0} radius={24} shadowCss={shadow.card} style={{ overflow: 'hidden' }}>
               <Sk h={170} r={0} />
@@ -236,7 +232,7 @@ export default function Explore() {
         <div style={{ padding: 32, textAlign: 'center', ...t(14, { c: C.muted }) }}>No arenas match. Try another sport, time or fewer filters.</div>
       )}
       {venues && venues.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(auto-fill, minmax(300px, 1fr))' : '1fr', gap: desktop ? 22 : 16, padding: desktop ? 0 : '0 20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(auto-fill, minmax(300px, 1fr))' : '1fr', gap: desktop ? 22 : 18, padding: desktop ? 0 : '0 16px' }}>
           {venues.map((v) => (
             <VenueCard key={v.id} v={v} fav={app.saved.has(v.id)} onOpen={() => nav(routes.venue(v.id))} onFav={() => toggleFav(v)} />
           ))}
@@ -331,126 +327,239 @@ export default function Explore() {
     );
   }
 
+  const firstName = String(app.user?.name ?? '').trim().split(' ')[0];
+  const night = filters.amenities.includes('floodlights');
+  const toggleNight = () =>
+    applyFilters({ ...filters, amenities: night ? filters.amenities.filter((x) => x !== 'floodlights') : [...filters.amenities, 'floodlights'] }, sort);
+  const topRated = venues && venues.length >= 3 ? [...venues].sort((x, y) => (y.rating ?? 0) - (x.rating ?? 0)).slice(0, 6) : [];
+  const live = cityLobbies.length;
+
   return (
-    <Shell nav>
-      <div style={{ paddingTop: 'calc(var(--safe-top) + 8px)', paddingBottom: 20 }}>
-        <div style={{ padding: '0 20px', display: 'flex', alignItems: 'center' }}>
-          <button onClick={() => nav('/location')} style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
-            <div style={t(12, { c: C.muted })}>Playing in</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <MapPin size={16} color={C.brand} fill={C.brand} strokeWidth={0} />
-              <span className="clamp1" style={t(16, { w: 700 })}>
-                {city}
-              </span>
-              <ChevronDown size={16} />
-            </div>
-          </button>
-          <SquareIconButton
-            icon={Bell}
-            label="Notifications"
-            badge={unread > 0}
-            onClick={() => {
-              if (!requireLogin()) return;
-              setUnread(0);
-              nav('/notifications');
-            }}
-          />
-        </div>
-        <div style={{ padding: '16px 20px 0', whiteSpace: 'pre-line', ...d(26, { h: 1.15, ls: -0.5 }) }}>{'Ready for your\nnext game?'}</div>
-        <div style={{ padding: '16px 20px 0', display: 'flex', gap: 10 }}>
-          <div
-            style={{
-              flex: 1,
-              height: 50,
-              padding: '0 14px',
-              borderRadius: 16,
-              background: '#fff',
-              border: `1px solid ${C.line}`,
-              boxShadow: shadow.soft,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-            }}
-          >
-            <Search size={18} color={C.muted} />
-            <input type="search" placeholder="Search turfs, courts, venues" onChange={(e) => onSearch(e.target.value)} style={t(15)} />
-          </div>
-          <button
-            aria-label="More filters"
-            className="tap"
-            onClick={openFilters}
-            style={{ position: 'relative', width: 50, height: 50, borderRadius: 16, background: C.brand, boxShadow: shadow.brandSm, display: 'grid', placeItems: 'center' }}
-          >
-            <SlidersHorizontal size={20} color="#fff" />
-            {fc > 0 && (
-              <span
-                style={{
-                  position: 'absolute',
-                  top: 8,
-                  right: 8,
-                  width: 16,
-                  height: 16,
-                  borderRadius: 99,
-                  background: C.lime,
-                  display: 'grid',
-                  placeItems: 'center',
-                  ...t(10, { w: 700, h: 1 }),
-                }}
-              >
-                {fc}
-              </span>
-            )}
-          </button>
-        </div>
-        <H2 style={{ padding: '22px 20px 12px' }}>Choose your sport</H2>
-        {sportChips}
-        {offer.enabled === true && (
-          <div style={{ margin: '20px 20px 0' }}>
-            <OfferBanner o={offer} />
-          </div>
-        )}
-        {cityLobbies.length > 0 && (
+    <Shell>
+      <Band
+        title={app.areaName || app.cityName || 'Choose location'}
+        subtitle={app.areaName && app.cityName ? app.cityName : 'Tap to pick your area'}
+        onTitle={() => nav('/location')}
+        right={
           <>
-            <div style={{ padding: '22px 20px 10px', display: 'flex', alignItems: 'center' }}>
-              <H2 style={{ flex: 1 }}>Open lobbies in {app.cityName}</H2>
-              <button onClick={openBoard} style={t(13, { w: 700, c: C.brand })}>
-                See all
-              </button>
-            </div>
-            <div className="hscroll" style={{ gap: 10, padding: '0 20px' }}>
-              {cityLobbies.slice(0, 8).map((g) => (
-                <LobbyCard key={g.id} g={g} onClick={openBoard} />
+            {app.loggedIn && <BookingsButton />}
+            <ProfileButton />
+          </>
+        }
+      >
+        <SectionTabs active={0} badge={live > 0 ? `${live} LIVE` : null} />
+        <Panel flat>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <label style={{ flex: 1, minWidth: 0, height: 56, padding: '0 14px', borderRadius: 18, background: '#fff', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Search size={22} color={C.mutedInk} />
+              <input type="search" aria-label="Search" placeholder="Search turfs, courts, venues" onChange={(e) => onSearch(e.target.value)} style={t(15)} />
+            </label>
+            <button
+              aria-pressed={night}
+              aria-label="Floodlit venues only"
+              className="tap"
+              onClick={toggleNight}
+              style={{ flex: 'none', width: 66, height: 56, borderRadius: 18, background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+            >
+              <span style={t(11, { w: 800, c: C.mutedInk, ls: 0.6, h: 1 })}>NIGHT</span>
+              <span style={{ position: 'relative', width: 34, height: 18, borderRadius: 999, background: night ? C.green700 : C.dotOff, transition: 'background 160ms' }}>
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 2,
+                    left: night ? 18 : 2,
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    background: '#fff',
+                    border: `2px solid ${night ? C.green700 : C.dotOff}`,
+                    transition: 'left 160ms',
+                  }}
+                />
+              </span>
+            </button>
+          </div>
+          <UnderlineTabs items={sortOrder.map((k) => ({ label: sortTabs[k][0], icon: sortTabs[k][1] }))} index={sortOrder.indexOf(sort)} onChange={(i) => { setSort(sortOrder[i]); load({ sort: sortOrder[i] }); }} />
+          <PanelHeadline size={34}>
+            {firstName ? (
+              <>
+                Game on, <Script>{firstName}!</Script>
+              </>
+            ) : (
+              <>
+                Ready to <Script>play?</Script>
+              </>
+            )}
+          </PanelHeadline>
+          <PromoGrid offer={offer.enabled === true ? offer : null} live={live} onLobbies={() => nav(routes.matches)} onSquad={() => nav(routes.matches)} />
+        </Panel>
+      </Band>
+
+      <main style={{ display: 'flex', flexDirection: 'column', gap: 28, padding: '24px 0 0' }}>
+        {app.sports.length > 0 && (
+          <section style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <Rule style={{ padding: '0 16px' }}>{firstName ? `${firstName}, what are we playing?` : 'What are we playing?'}</Rule>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '16px 8px', padding: '0 16px' }}>
+              {app.sports.map((sp) => (
+                <SportDisc key={sp.id} label={sp.name} img={sportThumb(sp.name, sp.image)} on={sportId === sp.id} onClick={() => pickSport(sportId === sp.id ? null : sp.id)} />
               ))}
             </div>
-          </>
+          </section>
         )}
-        {listHeader}
-        {notices}
-        {list}
-      </div>
+
+        {topRated.length > 0 && (
+          <section style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ padding: '0 16px', ...d(19, { ls: -0.4 }) }}>Top rated near you</div>
+            <div className="hscroll" style={{ gap: 12, padding: '0 16px' }}>
+              {topRated.map((v) => (
+                <RailCard key={v.id} v={v} onClick={() => nav(routes.venue(v.id))} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section id="venues" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Rule style={{ padding: '0 16px' }}>{venues == null ? 'All venues around you' : `${venues.length} venue${venues.length === 1 ? '' : 's'} around you`}</Rule>
+          <div className="hscroll" style={{ gap: 8, padding: '0 16px' }}>
+            <ChipButton onClick={openFilters} on={fc > 0}>
+              <SlidersHorizontal size={16} color={C.brand} /> Filters{fc > 0 ? ` · ${fc}` : ''}
+            </ChipButton>
+            <ChipButton onClick={cycleSort}>
+              {sortLabels[sort]} <ChevronDown size={16} />
+            </ChipButton>
+            {fc > 0 && <ChipButton onClick={clearFilters}>Clear filters</ChipButton>}
+            {radius.label && (
+              <ChipButton on>
+                <Radar size={15} color={C.brand} /> {radius.label}
+              </ChipButton>
+            )}
+          </div>
+          {radius.notice && venues && (
+            <div style={{ margin: '0 16px', padding: '10px 12px', borderRadius: 12, background: C.blueSoft, display: 'flex', gap: 8, alignItems: 'center', ...t(13, { c: C.blueInk }) }}>
+              <LocateFixed size={16} color={C.blue} /> {radius.notice}
+            </div>
+          )}
+          <div style={{ padding: '4px 0 0' }}>{list}</div>
+        </section>
+
+        <footer style={{ padding: '28px 20px 40px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={d(40, { c: '#D9DED8', h: 1, ls: -1.6 })}>
+            Play more,
+            <br />
+            wait less.
+          </div>
+          <div style={t(12.5, { w: 600, c: C.muted })}>Made for weekend warriors{app.cityName ? ` in ${app.cityName}` : ''}</div>
+        </footer>
+      </main>
     </Shell>
   );
 }
 
-function SportChip({ label, img, on, fg, onClick }) {
+const ChipButton = ({ children, onClick, on }) => (
+  <button
+    className={onClick ? 'tap' : undefined}
+    onClick={onClick}
+    style={{
+      flex: 'none',
+      height: 38,
+      padding: '0 12px',
+      borderRadius: 12,
+      border: `1px solid ${on ? C.brand : C.chipLine}`,
+      background: on ? C.mint : '#fff',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+      ...t(13, { w: 700, c: on ? C.brand : C.ink }),
+    }}
+  >
+    {children}
+  </button>
+);
+
+/** Dark-green promo tiles in the panel: the admin offer (big), live lobbies and squad split. */
+function PromoGrid({ offer, live, onLobbies, onSquad }) {
+  const tile = { position: 'relative', borderRadius: 22, background: C.green900, overflow: 'hidden', padding: 14, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 2 };
+  const round = (src) => (
+    <span style={{ position: 'absolute', right: -8, bottom: -8, width: 74, height: 74, borderRadius: '50%', overflow: 'hidden', border: `3px solid ${C.brand}` }}>
+      <Img url={src} />
+    </span>
+  );
+  const lobbies = (
+    <button className="tap" onClick={onLobbies} style={{ ...tile, minHeight: 138 }}>
+      <span style={{ maxWidth: 110, ...d(16, { c: C.sun, h: 1.1, ls: -0.3 }) }}>{live > 0 ? `${live} open lobbies` : 'Open lobbies'}</span>
+      <span style={{ maxWidth: 90, ...t(12, { w: 600, c: C.panelInk }) }}>Join solo, pay your share</span>
+      {round(ART.indoor)}
+    </button>
+  );
+  const squad = (
+    <button className="tap" onClick={onSquad} style={{ ...tile, minHeight: 138 }}>
+      <span style={{ maxWidth: 100, ...d(16, { c: C.sun, h: 1.1, ls: -0.3 }) }}>Split with squad</span>
+      <span style={{ maxWidth: 90, ...t(12, { w: 600, c: C.panelInk }) }}>Pay only your share</span>
+      {round(ART.training)}
+    </button>
+  );
+  if (!offer) return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>{lobbies}{squad}</div>;
   return (
-    <button aria-pressed={on} onClick={onClick} style={{ width: 72, flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <span
-        className="tap"
-        style={{
-          width: 68,
-          height: 68,
-          padding: 3,
-          borderRadius: 22,
-          background: on ? fg : '#fff',
-          border: on ? 'none' : `1px solid ${C.line}`,
-          boxShadow: on ? '0 8px 18px rgba(12,36,25,.18)' : undefined,
-          transition: 'all 150ms',
-        }}
-      >
-        <Img url={img} radius={18} />
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gridTemplateRows: '138px 138px', gap: 10 }}>
+      <div style={{ ...tile, gridRow: 'span 2', padding: 16, gap: 4 }}>
+        {offer.tag && <span style={t(11, { w: 800, c: C.panelInk, ls: 1.2 })}>{String(offer.tag).toUpperCase()}</span>}
+        <span style={{ whiteSpace: 'pre-line', ...d(22, { c: C.sun, h: 1.05, ls: -0.6 }) }}>{offer.title ?? ''}</span>
+        <span style={t(13, { w: 600, c: C.panelInk })}>{offer.subtitle ?? ''}</span>
+        <span style={{ position: 'absolute', left: 34, right: -10, bottom: -10, height: 150, borderRadius: '22px 0 0 0', overflow: 'hidden' }}>
+          <Img url={offer.image || ART.floodlit} fallback="turf-night" />
+        </span>
+      </div>
+      {lobbies}
+      {squad}
+    </div>
+  );
+}
+
+/** Round sport photo with a forest ring when picked. */
+function SportDisc({ label, img, on, onClick }) {
+  return (
+    <button aria-pressed={on} onClick={onClick} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <span className="tap" style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', boxShadow: on ? `0 0 0 3px ${C.brand}` : undefined, transition: 'box-shadow 150ms' }}>
+        <Img url={img} />
       </span>
-      <span style={{ marginTop: 6, ...t(12, { w: on ? 700 : 500, c: on ? fg : C.ink }) }}>{label}</span>
+      <span className="clamp1" style={{ maxWidth: '100%', ...t(12.5, { w: on ? 800 : 700, c: on ? C.ink : C.mutedInk }) }}>
+        {label}
+      </span>
+    </button>
+  );
+}
+
+function RailCard({ v, onClick }) {
+  return (
+    <button onClick={onClick} style={{ flex: 'none', width: 152, display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left' }}>
+      <span className="tap" style={{ position: 'relative', height: 152, borderRadius: 18, overflow: 'hidden' }}>
+        <Img url={v.image} alt={v.name} />
+        {(v.highlight || v.is_fast_filling) && (
+          <span
+            className="clamp1"
+            style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '22px 10px 8px', background: 'linear-gradient(180deg, rgba(12,36,25,0) 0%, rgba(12,36,25,.88) 100%)', ...t(13, { w: 800, c: '#fff' }) }}
+          >
+            {v.highlight || 'Fast filling'}
+          </span>
+        )}
+      </span>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '0 2px' }}>
+        <span className="clamp1" style={t(15, { w: 800 })}>
+          {v.name}
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4, ...t(13, { w: 700 }) }}>
+          <span style={{ width: 17, height: 17, borderRadius: '50%', background: C.green700, display: 'grid', placeItems: 'center' }}>
+            <Star size={10} color="#fff" fill="#fff" />
+          </span>
+          {v.rating}
+          {v.distance_km != null ? ` · ${Number(v.distance_km).toFixed(1)} km` : ''}
+        </span>
+        <span className="clamp1" style={t(12.5, { c: C.muted })}>
+          {asList(v.sports)
+            .map((x) => x.name)
+            .join(' · ')}
+        </span>
+      </span>
     </button>
   );
 }
@@ -516,83 +625,67 @@ function LobbyCard({ g, onClick }) {
 
 export function VenueCard({ v, fav, onOpen, onFav }) {
   const km = v.distance_km;
+  const lobbies = v.open_lobbies ?? 0;
+  const sports = asList(v.sports)
+    .map((x) => x.name)
+    .join(' · ');
   return (
-    <div className="lift" style={{ position: 'relative', borderRadius: 24, background: '#fff', boxShadow: shadow.card, overflow: 'hidden' }}>
+    <article className="lift" style={{ position: 'relative', borderRadius: 22, background: '#fff', border: '1px solid #F0EEE8', boxShadow: '0 1px 2px rgba(12,36,25,.05), 0 6px 20px rgba(12,36,25,.07)', overflow: 'hidden' }}>
       <button onClick={onOpen} style={{ display: 'block', width: '100%', textAlign: 'left' }}>
-        <div style={{ position: 'relative', height: 170, overflow: 'hidden' }}>
+        <div style={{ position: 'relative', height: 190, overflow: 'hidden' }}>
           <Img url={v.image} className="zoom" alt={v.name} />
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent 50%, rgba(0,0,0,.5) 100%)' }} />
-          <div style={{ position: 'absolute', left: 12, top: 12, display: 'flex', gap: 6 }}>
-            {v.is_fast_filling === true && (
-              <Pill bg={C.lime} fg={C.ink}>
-                Fast filling
-              </Pill>
-            )}
-            {(v.open_lobbies ?? 0) > 0 && (
-              <Pill bg="#fff" fg={C.green700}>
-                {v.open_lobbies} open {v.open_lobbies === 1 ? 'lobby' : 'lobbies'}
-              </Pill>
-            )}
-          </div>
-          {km != null && (
-            <div style={{ position: 'absolute', left: 12, bottom: 12, display: 'flex', alignItems: 'center', gap: 4, ...t(12, { w: 600, c: '#fff' }) }}>
-              <MapPin size={14} color="#fff" /> {Number(km).toFixed(1)} km
-            </div>
+          {(lobbies > 0 || v.is_fast_filling === true) && (
+            <span
+              style={{ position: 'absolute', top: 12, left: 12, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, background: '#fff', ...t(11.5, { w: 800, h: 1.2 }) }}
+            >
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: C.coral, filter: 'drop-shadow(0 0 5px rgba(242,85,44,.6))' }} />
+              {lobbies > 0 ? `${lobbies} open ${lobbies === 1 ? 'lobby' : 'lobbies'}` : 'Fast filling'}
+            </span>
           )}
-          <div
-            style={{
-              position: 'absolute',
-              right: 12,
-              bottom: 12,
-              padding: '4px 8px',
-              borderRadius: 8,
-              background: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 3,
-              ...t(12, { w: 700 }),
-            }}
-          >
-            <Star size={14} color={C.star} fill={C.star} /> {v.rating}
-          </div>
+          {String(v.highlight ?? '') && (
+            <span
+              className="clamp1"
+              style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '30px 16px 12px', background: 'linear-gradient(180deg, rgba(12,36,25,0) 0%, rgba(12,36,25,.88) 100%)', ...d(20, { c: '#fff', ls: -0.5 }) }}
+            >
+              {v.highlight}
+            </span>
+          )}
         </div>
-        <div style={{ padding: '14px 16px 16px' }}>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={d(18, { h: 1.2 })}>{v.name}</div>
-              <div style={{ marginTop: 2, ...t(13, { c: C.muted }) }}>
-                {v.area} · {count(v.review_count)} reviews
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={t(12, { c: C.muted, h: 1.2 })}>from</div>
-              <div>
-                <span style={d(18, { c: C.brand })}>{inr(v.price_from)}</span>
-                <span style={t(12, { c: C.muted })}>/hr</span>
-              </div>
-            </div>
+        <div style={{ padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <span className="clamp1" style={d(18, { ls: -0.4 })}>
+              {v.name}
+            </span>
+            <RatingBadge value={v.rating} />
           </div>
-          <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {asList(v.sports).map((sp) => (
-              <SportPill key={sp.id ?? sp.name} sport={sp} size={12} />
-            ))}
-            {String(v.highlight ?? '') && (
-              <Pill bg={C.chip} fg={C.muted} size={12}>
-                {v.highlight}
-              </Pill>
-            )}
+          {sports && <div style={t(13.5, { w: 600, c: C.mutedInk })}>{sports}</div>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, ...t(13, { c: C.muted }) }}>
+            <MapPin size={15} color={C.muted} />
+            {km != null ? `${Number(km).toFixed(1)} km · ` : ''}
+            {v.area}
+          </div>
+          <div style={{ margin: '6px 0 4px', borderTop: `1.5px dashed ${C.hair}` }} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, ...t(13, { w: 700, c: C.green700 }) }}>
+              <Zap size={16} color={C.coral} fill={C.coral} strokeWidth={0} />
+              {count(v.review_count)} ratings
+            </span>
+            <span style={t(14, { w: 800 })}>
+              from {inr(v.price_from)}
+              <span style={t(12, { w: 600, c: C.muted })}>/hr</span>
+            </span>
           </div>
         </div>
       </button>
       <button
-        aria-label={fav ? 'Remove from favourites' : 'Save to favourites'}
+        aria-label={fav ? `Remove ${v.name} from saved` : `Save ${v.name}`}
         className="tap"
         onClick={onFav}
-        style={{ position: 'absolute', top: 10, right: 10, width: 40, height: 40, borderRadius: 99, background: 'rgba(255,255,255,.95)', display: 'grid', placeItems: 'center' }}
+        style={{ position: 'absolute', top: 12, right: 12, width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,255,255,.95)', display: 'grid', placeItems: 'center' }}
       >
-        <Heart size={19} color={C.rose} fill={fav ? C.rose : 'none'} />
+        <Heart size={19} color={fav ? C.coral : C.brand} fill={fav ? C.coral : 'none'} strokeWidth={1.8} />
       </button>
-    </div>
+    </article>
   );
 }
 

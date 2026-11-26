@@ -7,6 +7,7 @@ import '../../../app/session/app_cubit.dart';
 import '../../../app/session/app_state.dart';
 import '../../../core/network/json.dart';
 import '../../../core/theme/theme.dart';
+import '../../../core/utils/external_actions.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../../data/repositories/booking_repository.dart';
@@ -51,7 +52,7 @@ class _MyBookingsView extends StatelessWidget {
                     IconButton(
                       iconSize: 40,
                       onPressed: () => set(() => stars = i),
-                      icon: Icon(i <= stars ? Icons.star_rounded : Icons.star_outline_rounded, color: C.star),
+                      icon: DIcon(i <= stars ? DIcons.star : DIcons.starLine, size: 40, color: C.star),
                       tooltip: '$i stars',
                     ),
                 ],
@@ -79,55 +80,47 @@ class _MyBookingsView extends StatelessWidget {
   Widget _build(BuildContext context, MyBookingsState st) {
     final cubit = context.read<MyBookingsCubit>();
     final app = context.watch<AppCubit>();
-    final s = app.state;
     final data = st.data, error = st.error, tab = st.tab;
-    final top = MediaQuery.of(context).padding.top;
     final counts = asMap(data?['counts']);
+    final items = asList(data?['items']);
+    final showNext = tab == 0 && items.isNotEmpty;
+    final listed = showNext ? items.skip(1).toList() : items;
+    final labels = [
+      'UPCOMING · ${counts['upcoming'] ?? 0}',
+      'COMPLETED · ${counts['completed'] ?? 0}',
+      'CANCELLED · ${counts['cancelled'] ?? 0}',
+    ];
     return RefreshIndicator(
       color: C.brand,
       onRefresh: cubit.load,
       child: ListView(
-        padding: EdgeInsets.fromLTRB(0, top + 12, 0, 20),
+        padding: EdgeInsets.zero,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('My bookings', style: d(28, ls: -0.5)),
-                      const SizedBox(height: 4),
-                      Text('Linked to ${s.user?['masked_email'] ?? ''}', style: t(13, c: C.muted)),
-                    ],
-                  ),
-                ),
-                GhostButton(
-                  'Help',
-                  icon: LucideIcons.circleHelp,
-                  height: 40,
-                  radius: 999,
-                  fontSize: 13,
-                  onTap: () => context.pushHelp(),
-                ),
-              ],
-            ),
+          Band(
+            title: 'My bookings',
+            subtitle: data == null ? null : '${counts['upcoming'] ?? 0} upcoming · ${counts['completed'] ?? 0} played',
+            onBack: () => app.setTab(AppTab.explore),
+            actions: const [ProfileButton()],
+            children: [
+              Panel(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 22),
+                children: [
+                  UnderlineTabs(labels: labels, index: tab, onChange: cubit.selectTab),
+                  if (showNext) _upNext(context, items.first),
+                  if (tab > 0 && data != null)
+                    PanelHeadline(
+                      tab == 1 ? '${counts['completed'] ?? 0} games ' : '${counts['cancelled'] ?? 0} ',
+                      tab == 1 ? 'played' : 'cancelled',
+                      size: 28,
+                    ),
+                ],
+              ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-            child: Segmented(
-              labels: const ['Upcoming', 'Completed', 'Cancelled'],
-              counts: [counts['upcoming'] ?? 0, counts['completed'] ?? 0, counts['cancelled'] ?? 0],
-              index: tab,
-              onChanged: cubit.selectTab,
-            ),
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           if (error != null) ErrorRetry(error, onRetry: cubit.load),
           if (data == null && error == null) const BookingCardsSkeleton(),
-          if (data != null && asList(data['items']).isEmpty)
+          if (data != null && items.isEmpty)
             Padding(
               padding: const EdgeInsets.all(32),
               child: Column(
@@ -146,179 +139,315 @@ class _MyBookingsView extends StatelessWidget {
                 ],
               ),
             ),
-          for (final b in asList(data?['items']))
-            Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 14), child: _card(context, b)),
+          if (showNext && listed.isNotEmpty)
+            const Padding(padding: EdgeInsets.fromLTRB(16, 0, 16, 16), child: Rule('Also coming up')),
+          for (final b in listed) Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), child: _card(context, b)),
+          SizedBox(height: 16 + MediaQuery.of(context).padding.bottom),
         ],
       ),
     );
   }
 
-  Widget _card(BuildContext context, Json b) {
-    final status = b['status'];
-    final statusStyle = {
-      'held': ('Payment due', C.coralSoft, C.orangeInk),
-      'confirmed': ('Confirmed', C.mint, C.green700),
-      'completed': ('Completed', C.chip, C.muted),
-      'cancelled': (b['refund_amount'] > 0 ? 'Refunded' : 'Cancelled', C.orangeSoft, C.orangeInk),
-    }[status] ?? (status.toString(), C.chip, C.muted);
-    final km = b['venue']['area'];
-    return Container(
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), boxShadow: shadowCard),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () async {
-              await context.pushTicket(b['id']);
-              if (context.mounted) context.read<MyBookingsCubit>().load();
-            },
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+  /// "KICK-OFF IN 2 DAYS" — or hours when it's today.
+  String _kickoff(Json b) {
+    final h = ((b['hours_left'] ?? 0) as num).toDouble();
+    if (h <= 0) return 'ON NOW';
+    if (h < 1) return 'KICK-OFF SOON';
+    if (h < 24) return 'KICK-OFF IN ${h.round()} HR${h.round() == 1 ? '' : 'S'}';
+    final days = (h / 24).round();
+    return 'KICK-OFF IN $days DAY${days == 1 ? '' : 'S'}';
+  }
+
+  /// The next game as a white ticket inside the green panel.
+  Widget _upNext(BuildContext context, Json b) {
+    final venue = asMap(b['venue']), sport = asMap(b['sport']), court = asMap(b['court']);
+    final held = b['status'] == 'held';
+    Future<void> open() async {
+      if (held) {
+        await context.pushPayment(b);
+      } else {
+        await context.pushTicket(b['id']);
+      }
+      if (context.mounted) context.read<MyBookingsCubit>().load();
+    }
+
+    final quick = [
+      (
+        DIcons.directions,
+        'Directions',
+        () => openMaps(venue['lat'], venue['lng'], '${venue['name']} ${venue['address'] ?? ''}'),
+      ),
+      if ('${venue['phone'] ?? ''}'.isNotEmpty) (DIcons.phone, 'Call', () => callNumber('${venue['phone']}')),
+      (LucideIcons.qrCode, held ? 'Pay now' : 'Pass', open),
+    ];
+    final pin = '${b['checkin_pin'] ?? ''}';
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: Material(
+        color: Colors.white,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            InkWell(
+              onTap: open,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Img(b['venue']['image'], width: 76, height: 76, radius: BorderRadius.circular(16)),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  SizedBox(
+                    height: 140,
+                    child: Stack(
+                      fit: StackFit.expand,
                       children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: Text(b['venue']['name'], style: d(16, h: 1.2))),
-                            const SizedBox(width: 8),
-                            Pill(
-                              statusStyle.$1,
-                              bg: statusStyle.$2,
-                              fg: statusStyle.$3,
-                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                        Img(venue['image']),
+                        const DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Color(0x1A0C2419), Color(0xD90C2419)],
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(km, style: t(13, c: C.muted)),
-                        const SizedBox(height: 4),
-                        SportPill(b['sport'], label: '${b['sport']['name']} · ${b['court']['name']}'),
-                        if (b['lobby'] != null) ...[
-                          const SizedBox(height: 6),
-                          Pill(
-                            '${b['role'] == 'player' ? 'Joined match' : 'Match'} · '
-                            '${b['lobby']['taken']}/${b['lobby']['capacity']} in',
-                            bg: C.limeSoft,
-                            fg: C.green700,
                           ),
-                        ],
+                        ),
+                        Positioned(
+                          top: 12,
+                          right: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(color: C.sun, borderRadius: BorderRadius.circular(999)),
+                            child: Text(held ? 'Payment due' : 'Show pass', style: t(12, w: FontWeight.w800, h: 1.2)),
+                          ),
+                        ),
+                        Positioned(
+                          left: 16,
+                          bottom: 12,
+                          right: 16,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _kickoff(b),
+                                style: t(12, w: FontWeight.w800, c: C.sun, ls: 1),
+                              ),
+                              Text('${b['date_label']} · ${b['time_short']}', style: d(18, c: Colors.white, ls: -0.4)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${venue['name']}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: t(16, w: FontWeight.w800),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${court['name']} · ${sport['name']} · ${b['duration']} hr${b['duration'] == 1 ? '' : 's'}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: t(12.5, w: FontWeight.w600, c: C.mutedInk),
+                              ),
+                              const SizedBox(height: 2),
+                              Text('ID ${b['code']}${pin.isNotEmpty ? ' · PIN $pin' : ''}', style: t(12.5, c: C.muted)),
+                            ],
+                          ),
+                        ),
+                        Text(inr(b['my_paid'] ?? b['total']), style: t(15, w: FontWeight.w800)),
                       ],
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: const BoxDecoration(
-              color: C.ground,
-              border: Border(top: BorderSide(color: C.dashed)),
-            ),
-            child: Row(
-              children: [
-                Expanded(child: KV('Date', b['date_label'], vSize: 13)),
-                Expanded(child: KV('Time', b['time_short'], vSize: 13)),
-                Expanded(
-                  child: KV(
-                    status == 'cancelled' ? 'Refund' : (status == 'held' ? 'Due' : 'Paid'),
-                    inr(status == 'cancelled' ? b['refund_amount'] : (b['my_paid'] ?? b['total'])),
-                    vSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(b['note'] ?? '', style: t(12, c: C.muted)),
-                ),
-                const SizedBox(width: 10),
-                if (status == 'confirmed')
-                  SizedBox(
-                    height: 40,
-                    child: Material(
-                      color: C.brand,
-                      borderRadius: BorderRadius.circular(12),
+            Container(
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: C.hair)),
+              ),
+              child: Row(
+                children: [
+                  for (var i = 0; i < quick.length; i++)
+                    Expanded(
                       child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () async {
-                          await context.pushTicket(b['id']);
-                          if (context.mounted) context.read<MyBookingsCubit>().load();
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                        onTap: quick[i].$3,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            border: i < quick.length - 1 ? const Border(right: BorderSide(color: C.hair)) : null,
+                          ),
                           child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Icon(LucideIcons.qrCode, size: 16, color: Colors.white),
+                              glyph(quick[i].$1, size: 16, color: C.brand),
                               const SizedBox(width: 6),
                               Text(
-                                'View ticket',
-                                style: t(13, w: FontWeight.w600, c: Colors.white),
+                                quick[i].$2,
+                                style: t(12.5, w: FontWeight.w800, c: C.brand),
                               ),
                             ],
                           ),
                         ),
                       ),
                     ),
-                  ),
-                if (status == 'held')
-                  SizedBox(
-                    width: 112,
-                    child: PrimaryButton(
-                      'Pay now',
-                      height: 40,
-                      radius: 12,
-                      fontSize: 13,
-                      shadow: false,
-                      onTap: () async {
-                        await context.pushPayment(b);
-                        if (context.mounted) context.read<MyBookingsCubit>().load();
-                      },
-                    ),
-                  ),
-                if (status == 'completed') ...[
-                  if (b['can_review'] == true) ...[
-                    GhostButton('Rate', height: 40, radius: 12, fontSize: 13, onTap: () => _rate(context, b)),
-                    const SizedBox(width: 8),
-                  ],
-                  GhostButton(
-                    'Book again',
-                    height: 40,
-                    radius: 12,
-                    fontSize: 13,
-                    bg: C.mint,
-                    fg: C.green700,
-                    border: Colors.transparent,
-                    onTap: () async {
-                      await openSlotBooking(context, b['venue']['id'], sportId: b['sport']['id']);
-                      if (context.mounted) context.read<MyBookingsCubit>().load();
-                    },
-                  ),
                 ],
-                if (status == 'cancelled')
-                  GestureDetector(
-                    onTap: () => context.pushPolicy(),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: Text(
-                        'Refund policy',
-                        style: t(13, w: FontWeight.w600, c: C.brand, deco: TextDecoration.underline),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _card(BuildContext context, Json b) {
+    final status = b['status'];
+    final (label, bg, fg) = switch (status) {
+      'held' => ('PAYMENT DUE', C.coralSoft, C.orangeInk),
+      'confirmed' => ('CONFIRMED', C.mint, C.brand),
+      'completed' => ('PLAYED', C.mint, C.brand),
+      'cancelled' => (
+        ((b['refund_amount'] ?? 0) as num) > 0 ? 'REFUNDED ${inr(b['refund_amount'])}' : 'CANCELLED',
+        C.coralSoft,
+        C.orangeInk,
+      ),
+      _ => ('$status'.toUpperCase(), C.chip, C.muted),
+    };
+    final venue = asMap(b['venue']), sport = asMap(b['sport']), court = asMap(b['court']);
+    Future<void> reload() async {
+      if (context.mounted) context.read<MyBookingsCubit>().load();
+    }
+
+    Future<void> open() async {
+      await context.pushTicket(b['id']);
+      await reload();
+    }
+
+    Widget cta(String text, VoidCallback onTap, {bool filled = true, IconData? icon}) => Material(
+      color: filled ? C.brand : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: filled ? BorderSide.none : const BorderSide(color: C.brand, width: 1.5),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 15, color: filled ? Colors.white : C.brand),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                text,
+                style: t(13, w: FontWeight.w800, c: filled ? Colors.white : C.brand),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: C.hair),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          GestureDetector(
+            onTap: open,
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              children: [
+                ClipOval(child: Img(venue['image'], width: 52, height: 52)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${venue['name']}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: t(15, w: FontWeight.w800),
                       ),
-                    ),
+                      const SizedBox(height: 1),
+                      Text(
+                        '${b['date_label']} · ${b['time_short']} · ${sport['name']} · ${court['name']}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: t(12.5, w: FontWeight.w600, c: C.muted),
+                      ),
+                    ],
                   ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+                  child: Text(
+                    label,
+                    style: t(11, w: FontWeight.w800, c: fg, h: 1.2),
+                  ),
+                ),
               ],
             ),
+          ),
+          const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: DashedLine()),
+          Row(
+            children: [
+              Expanded(
+                child: status == 'completed' && b['can_review'] == true
+                    ? GestureDetector(
+                        onTap: () => _rate(context, b),
+                        child: Row(
+                          children: [
+                            Text(
+                              'Rate ',
+                              style: t(12.5, w: FontWeight.w700, c: C.mutedInk),
+                            ),
+                            for (var i = 0; i < 5; i++)
+                              const DIcon(DIcons.star, size: 17, color: Color(0xFFDDD9CE)),
+                          ],
+                        ),
+                      )
+                    : Text(
+                        '${b['note'] ?? ''}'.isNotEmpty
+                            ? '${b['note']}'
+                            : '${inr(status == 'cancelled' ? b['refund_amount'] : (b['my_paid'] ?? b['total']))} paid',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: t(12.5, w: FontWeight.w700, c: C.mutedInk),
+                      ),
+              ),
+              const SizedBox(width: 10),
+              if (status == 'confirmed') cta('Ticket', open, icon: LucideIcons.qrCode),
+              if (status == 'held')
+                cta('Pay now', () async {
+                  await context.pushPayment(b);
+                  await reload();
+                }),
+              if (status == 'completed' || status == 'cancelled')
+                cta('Book again', () async {
+                  await openSlotBooking(context, venue['id'], sportId: sport['id']);
+                  await reload();
+                }, filled: false),
+            ],
           ),
         ],
       ),

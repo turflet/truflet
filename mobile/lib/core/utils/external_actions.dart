@@ -35,3 +35,6 @@ void inviteTeam(Json b) => SharePlus.instance.share(
         '(${b['court']['name']}). Join me! Booking ${b['code']}',
   ),
 );
+
+/// Opens the dialer with the venue's number.
+Future<void> callNumber(String phone) => launchUrl(Uri(scheme: 'tel', path: phone));

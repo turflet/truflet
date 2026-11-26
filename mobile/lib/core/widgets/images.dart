@@ -1,18 +1,21 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-/// Network image (Cloudinary / Django media) with the app's placeholder colour.
+/// Network image (Cloudinary / Django media) with the app's placeholder colour. A path starting with `assets/` is a
+/// bundled image (the redesign's photography).
 class Img extends StatelessWidget {
   final String? url;
   final double? width, height;
   final BorderRadius? radius;
   final String fallback;
-  const Img(this.url, {super.key, this.width, this.height, this.radius, this.fallback = 'turf'});
+  const Img(this.url, {super.key, this.width, this.height, this.radius, this.fallback = 'turf-night'});
 
   @override
   Widget build(BuildContext context) {
     final Widget child = (url == null || url!.isEmpty)
         ? Image.asset('assets/images/$fallback.jpg', width: width, height: height, fit: BoxFit.cover)
+        : url!.startsWith('assets/')
+        ? Image.asset(url!, width: width, height: height, fit: BoxFit.cover)
         : CachedNetworkImage(
             imageUrl: url!,
             width: width,

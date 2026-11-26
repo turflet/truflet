@@ -3,16 +3,18 @@
  *  URL: /book?venue=ID[&sport=][&date=yyyy-mm-dd][&start=H][&reschedule=bookingId] */
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, CalendarCheck, Check, Flame, Mountain, Trophy, UserPlus, Users, Zap } from 'lucide-react';
+import { ArrowRight, CalendarCheck, Flame, Mountain, Trophy, UserPlus, Users } from 'lucide-react';
+import { Check, ChevronRight, Clock, Zap } from '../../ui/icons';
 import { useBack, useRequireProfile } from '../../app/nav';
 import { Shell } from '../../app/Shell';
 import { asList, errText } from '../../lib/api';
 import { bookingRepo, venueRepo } from '../../lib/repos';
-import { addDays, dayName, eeeDMmm, fmtHour, fmtTime, inr, ymd } from '../../lib/format';
+import { addDays, dayName, eeeD, eeeDMmm, fmtHour, fmtTime, inr, ymd } from '../../lib/format';
 import { C, d, shadow, t } from '../../theme';
 import { useIsDesktop } from '../../ui/hooks';
 import { useOverlay } from '../../ui/overlay';
-import { BackSquare, CardBox, Choice, ErrorRetry, GhostButton, Img, Label, PrimaryButton, Segmented, Sk, WarnBox } from '../../ui/kit';
+import { BackSquare, CardBox, Choice, ErrorRetry, GhostButton, Img, Label, PrimaryButton, Segmented, Sk, Spinner, WarnBox } from '../../ui/kit';
+import { BandButton, Panel, Rule } from '../../ui/brand';
 
 const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const groupsDef = [
@@ -476,38 +478,209 @@ function SlotBooking({ venue, reschedule, initialSportId, initialDate, initialSt
     );
   }
 
+  // Phone (redesign): one screen — green panel with sport, day, court and duration, then the slot grid and a cart bar.
+  const maxDur = 4;
+  const panelChip = (on) => ({
+    height: 38,
+    padding: '0 14px',
+    flex: 'none',
+    borderRadius: 12,
+    border: `1px solid ${on ? '#fff' : 'rgba(255,255,255,.12)'}`,
+    background: on ? '#fff' : 'rgba(255,255,255,.06)',
+    ...t(13, { w: 800, c: on ? C.brand : '#fff' }),
+  });
+  const total = check.valid ? inr(check.total) : '₹—';
+  const cartLine = start == null ? dateLabel : `${day === 0 ? 'Today' : eeeD(date)} · ${fmtTime(start)} · ${hrs}`;
   return (
-    <div className="page" style={{ minHeight: '100dvh', paddingBottom: 200 }}>
-      {header}
-      {stepper}
-      <div key={step} style={{ animation: 'rise 260ms ease' }}>
-        {step === 1 ? (
-          selectors
+    <div className="page" style={{ minHeight: '100dvh', paddingBottom: 'calc(120px + var(--safe-bottom))' }}>
+      <header style={{ background: C.brandDark, paddingTop: 'var(--safe-top)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '20px 16px 16px' }}>
+          <BandButton onClick={back} />
+          <span style={{ width: 44, height: 44, borderRadius: 12, overflow: 'hidden', flex: 'none' }}>
+            <Img url={venue.image} />
+          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <span className="clamp1" style={d(18, { c: '#fff', ls: -0.4 })}>
+              {isReschedule ? 'Reschedule · ' : ''}
+              {venue.name}
+            </span>
+            <span className="clamp1" style={t(12.5, { w: 600, c: C.bandInk })}>
+              {court?.name ?? ''} · {sport.name}
+            </span>
+          </div>
+        </div>
+        <Panel padding="18px 16px 20px" gap={16}>
+          {sports.length > 1 && !isReschedule && (
+            <div className="hscroll" style={{ gap: 8 }}>
+              {sports.map((x, i) => (
+                <button key={x.sport_id} className="tap" aria-pressed={i === sportIdx} onClick={() => (setSportIdx(i), setCourtIdx(0))} style={panelChip(i === sportIdx)}>
+                  {x.name}
+                </button>
+              ))}
+            </div>
+          )}
+          <div style={t(12, { w: 800, c: C.panelInk, ls: 1.4 })}>
+            PICK A DAY · {MONTHS_LONG[date.getMonth()].toUpperCase()}
+          </div>
+          <div className="hscroll" style={{ gap: 8, margin: '0 -16px', padding: '0 16px' }}>
+            {Array.from({ length: 14 }, (_, i) => {
+              const dd = addDays(today, i);
+              const on = i === day;
+              return (
+                <button
+                  key={i}
+                  aria-pressed={on}
+                  className="tap"
+                  onClick={() => setDay(i)}
+                  style={{
+                    width: 52,
+                    height: 72,
+                    flex: 'none',
+                    borderRadius: 18,
+                    border: `1px solid ${on ? '#fff' : 'rgba(255,255,255,.12)'}`,
+                    background: on ? '#fff' : 'rgba(255,255,255,.06)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 2,
+                  }}
+                >
+                  <span style={t(10.5, { w: 800, c: on ? C.green700 : C.bandInk, ls: 0.6 })}>{i === 0 ? 'TODAY' : dayName(dd).toUpperCase()}</span>
+                  <span style={d(21, { c: on ? C.brand : '#fff', ls: -0.5 })}>{dd.getDate()}</span>
+                </button>
+              );
+            })}
+          </div>
+          {courts.length > 1 && (
+            <div className="hscroll" style={{ gap: 8 }}>
+              {courts.map((c, i) => (
+                <button key={c.id} className="tap" aria-pressed={i === courtIdx} onClick={() => setCourtIdx(i)} style={panelChip(i === courtIdx)}>
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
+          {!isReschedule && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 10px 10px 14px', borderRadius: 18, background: C.green900 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 10, ...t(14, { w: 800, c: '#fff' }) }}>
+                <Clock size={22} color={C.sun} strokeWidth={1.8} /> Duration
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: 3, borderRadius: 12, background: 'rgba(255,255,255,.08)' }}>
+                <button
+                  aria-label="Shorter"
+                  disabled={dur <= 1}
+                  onClick={() => setDur(Math.max(1, dur - 1))}
+                  style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,.12)', opacity: dur <= 1 ? 0.5 : 1, ...t(18, { w: 800, c: '#fff', h: 1 }) }}
+                >
+                  −
+                </button>
+                <span style={{ minWidth: 62, textAlign: 'center', ...t(14, { w: 800, c: '#fff' }) }}>{hrs}</span>
+                <button
+                  aria-label="Longer"
+                  disabled={dur >= maxDur}
+                  onClick={() => setDur(Math.min(maxDur, dur + 1))}
+                  style={{ width: 36, height: 36, borderRadius: 10, background: '#fff', opacity: dur >= maxDur ? 0.5 : 1, ...t(18, { w: 800, c: C.brand, h: 1 }) }}
+                >
+                  +
+                </button>
+              </span>
+            </div>
+          )}
+        </Panel>
+      </header>
+
+      <main style={{ display: 'flex', flexDirection: 'column', gap: 20, padding: '20px 16px 0' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, ...t(12, { w: 700, c: C.mutedInk }) }}>
+          <LegendItem box={{ background: '#fff', border: `1.5px solid ${C.chipLine}` }} label="Free" />
+          <LegendItem box={{ width: 8, height: 8, borderRadius: '50%', background: C.coral }} label="Peak" />
+          <LegendItem box={{ background: C.mint, border: `1.5px solid ${C.green700}` }} label="Open lobby" />
+          <LegendItem box={{ background: C.chip }} label="Booked" />
+        </div>
+        {loading ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+            {Array.from({ length: 9 }, (_, i) => (
+              <Sk key={i} h={56} r={14} />
+            ))}
+          </div>
         ) : (
-          <>
-            {picked}
-            {grid}
-          </>
+          groupsDef.map(([name, a, b]) => {
+            const hs = slots.filter((x) => x.hour >= a && x.hour <= b);
+            if (!hs.length) return null;
+            const free = hs.filter((x) => x.status === 'free').length;
+            return (
+              <section key={name} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <Rule extra={`${free} of ${hs.length} free${hs.some((x) => x.peak) ? ' · peak' : ''}`}>{name}</Rule>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+                  {hs.map((x) => (
+                    <SlotTile key={x.hour} s={x} start={start} dur={dur} valid={check.valid} isReschedule={isReschedule} onPick={setStart} />
+                  ))}
+                </div>
+              </section>
+            );
+          })
         )}
-      </div>
-      <div
-        style={{
-          position: 'fixed',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: 40,
-          padding: '14px 20px calc(16px + var(--safe-bottom))',
-          background: '#fff',
-          borderRadius: '24px 24px 0 0',
-          borderTop: `1px solid ${C.line}`,
-        }}
-      >
-        {step === 1 ? step1Summary : summary}
+        {!check.valid && !loading && start != null && (isReschedule || lobbiesAtStart === 0) && <WarnBox>{check.error}</WarnBox>}
+      </main>
+
+      <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 40, padding: '12px 16px calc(20px + var(--safe-bottom))', background: '#fff', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {!isReschedule && lobbiesAtStart > 0 && (
+          <button
+            className="tap"
+            onClick={loading ? undefined : joinSolo}
+            style={{ height: 44, borderRadius: 14, background: C.mint, border: `1.5px solid ${C.green700}`, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, ...t(14, { w: 800, c: C.brand }) }}
+          >
+            <UserPlus size={17} color={C.brand} /> Join solo · {lobbiesAtStart} open {lobbiesAtStart === 1 ? 'lobby' : 'lobbies'}
+          </button>
+        )}
+        <button
+          className="tap"
+          disabled={!check.valid || loading || busy}
+          onClick={isReschedule ? doReschedule : createGroup}
+          style={{
+            height: 62,
+            padding: '0 18px',
+            borderRadius: 20,
+            background: check.valid ? C.brand : C.line,
+            boxShadow: check.valid ? '0 10px 24px rgba(20,61,43,.3)' : undefined,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            textAlign: 'left',
+          }}
+        >
+          <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <span className="clamp1" style={t(12, { w: 700, c: check.valid ? C.panelInk : C.muted })}>
+              {cartLine}
+            </span>
+            {isReschedule ? (
+              <span style={d(18, { c: check.valid ? '#fff' : '#57625A', ls: -0.3 })}>New slot</span>
+            ) : (
+              <span style={d(18, { c: check.valid ? '#fff' : '#57625A', ls: -0.3 })}>
+                {total} <span style={t(12, { w: 600, c: check.valid ? C.panelInk : C.muted })}>turf for the squad</span>
+              </span>
+            )}
+          </span>
+          {busy ? (
+            <Spinner />
+          ) : (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, ...t(16, { w: 800, c: check.valid ? '#fff' : '#57625A' }) }}>
+              {isReschedule ? 'Confirm' : 'Continue'}
+              {check.valid && <ChevronRight size={18} color={C.sun} strokeWidth={2.6} />}
+            </span>
+          )}
+        </button>
       </div>
     </div>
   );
 }
+
+const LegendItem = ({ box, label }) => (
+  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+    <span style={{ width: 12, height: 12, borderRadius: 4, ...box }} />
+    {label}
+  </span>
+);
 
 const DURATIONS = [
   { hours: 1, tag: 'Quick game', Icon: Zap, hint: 'A quick knock — perfect after work.' },
@@ -641,16 +814,17 @@ function SlotTile({ s, start, dur, valid, isReschedule, onPick }) {
   const clash = !valid && h === start && !lobbyPick;
   let bg = '#fff',
     fg = C.ink,
-    border = `1.5px solid ${C.radioOff}`;
-  if (past) [bg, fg, border] = [C.ground, '#57625A', '1px solid #C9D4CC'];
-  else if (lobbyPick) [bg, fg, border] = [C.green700, '#fff', `1px solid ${C.green700}`];
-  else if (booked && lobbies === 0) [bg, fg, border] = ['#E9ECE6', '#57625A', '1px solid #E9ECE6'];
-  else if (sel) [bg, fg, border] = [C.brand, '#fff', `1px solid ${C.brand}`];
+    border = `1.5px solid ${C.hair}`;
+  if (past) [bg, fg, border] = ['#fff', '#8A948D', `1.5px dashed ${C.hair}`];
+  else if (lobbyPick) [bg, fg, border] = [C.green700, '#fff', `1.5px solid ${C.green700}`];
+  else if (booked && lobbies === 0) [bg, fg, border] = [C.chip, C.muted, `1.5px solid ${C.chip}`];
+  else if (sel) [bg, fg, border] = [C.brand, '#fff', `1.5px solid ${C.brand}`];
   else if (clash) [fg, border] = [C.warnInk, '2px solid #B45309'];
-  else if (lobbies > 0) [bg, fg, border] = [C.limeSoft, C.green900, `1.5px solid ${C.green700}`];
+  else if (lobbies > 0) [bg, fg, border] = [C.mint, C.brand, `1.5px solid ${C.green700}`];
   const tappable = !past && (!booked || (lobbies > 0 && !isReschedule));
   const spots = s.lobby_spots ?? 0;
-  const peak = s.peak === true && !past && !booked && !sel && lobbies === 0;
+  const peak = s.peak === true && !past && !booked && lobbies === 0;
+  const note = past ? 'Past' : sel ? 'Selected' : lobbies > 0 ? `${spots} spot${spots === 1 ? '' : 's'} left` : booked ? 'Booked' : inr(s.price);
   return (
     <button
       className={tappable ? 'tap' : undefined}
@@ -659,21 +833,21 @@ function SlotTile({ s, start, dur, valid, isReschedule, onPick }) {
       onClick={() => onPick(h)}
       style={{
         position: 'relative',
-        aspectRatio: '1.45',
-        borderRadius: 12,
+        height: 56,
+        borderRadius: 14,
         background: bg,
         border,
-        boxShadow: sel || lobbyPick ? '0 6px 14px rgba(20,61,43,.28)' : undefined,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
+        gap: 1,
         transition: 'all 120ms',
       }}
     >
-      <span style={{ textDecoration: booked && lobbies === 0 ? 'line-through' : undefined, ...t(13, { w: 700, c: fg }) }}>{s.label}</span>
-      <span style={{ opacity: 0.85, ...t(10, { w: 500, c: fg }) }}>{past ? 'Past' : lobbies > 0 ? `${spots} left` : booked ? 'Booked' : inr(s.price)}</span>
-      {peak && <span style={{ position: 'absolute', top: 5, right: 5, width: 6, height: 6, borderRadius: 99, background: '#B45309' }} />}
+      <span style={{ textDecoration: booked && lobbies === 0 ? 'line-through' : undefined, ...t(14, { w: 800, c: fg, h: 1.2 }) }}>{s.label}</span>
+      <span style={{ opacity: 0.85, ...t(10.5, { w: 700, c: fg, h: 1.2 }) }}>{note}</span>
+      {peak && <span style={{ position: 'absolute', top: 7, right: 8, width: 7, height: 7, borderRadius: '50%', background: sel ? C.sun : C.coral }} />}
     </button>
   );
 }

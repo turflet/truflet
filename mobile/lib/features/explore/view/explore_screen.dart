@@ -4,11 +4,11 @@ import 'package:intl/intl.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../app/router/app_navigation.dart';
-import '../../../app/router/app_routes.dart';
 import '../../../app/session/app_cubit.dart';
 import '../../../app/session/app_state.dart';
 import '../../../core/network/json.dart';
 import '../../../core/theme/theme.dart';
+import '../../../core/utils/art.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../../data/repositories/lobby_repository.dart';
@@ -203,240 +203,261 @@ class _ExploreView extends StatelessWidget {
   @override
   Widget build(BuildContext context) => BlocBuilder<ExploreCubit, ExploreState>(builder: _build);
 
+  static const _sortTabs = {'near': 'NEARBY', 'price': 'BUDGET', 'rating': 'TOP RATED'};
+  static const _sortIcons = {
+    'near': DIcons.pin,
+    'price': DIcons.tag,
+    'rating': DIcons.star,
+  };
+
   Widget _build(BuildContext context, ExploreState st) {
     final cubit = context.read<ExploreCubit>();
-    final s = context.watch<AppCubit>().state;
-    final venues = st.venues, error = st.error, unread = st.unread, sort = st.sort;
+    final app = context.watch<AppCubit>();
+    final s = app.state;
+    final venues = st.venues, error = st.error, sort = st.sort;
     final offer = asMap(s.config['offer']);
-    final top = MediaQuery.of(context).padding.top;
+    final first = '${s.user?['name'] ?? ''}'.trim().split(' ').first;
+    final night = st.filters.amenities.contains('floodlights');
+    final live = st.cityLobbies.length;
+    final sortKeys = exploreSortOrder.toList();
+    final topRated = venues != null && venues.length >= 3
+        ? ([
+            ...venues,
+          ]..sort((a, b) => ((b['rating'] ?? 0) as num).compareTo((a['rating'] ?? 0) as num))).take(6).toList()
+        : <Json>[];
+
+    Future<void> pickLocation() async {
+      final changed = await context.pushLocation();
+      if (changed == true) cubit.load();
+    }
+
+    void toggleNight() {
+      final f = st.filters;
+      cubit.setFilters(
+        f.copyWith(amenities: night ? ({...f.amenities}..remove('floodlights')) : {...f.amenities, 'floodlights'}),
+      );
+      cubit.load();
+    }
+
     return RefreshIndicator(
       color: C.brand,
       onRefresh: cubit.load,
       child: ListView(
-        padding: EdgeInsets.only(top: top + 8, bottom: 20),
+        padding: EdgeInsets.zero,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () async {
-                      final changed = await context.pushLocation();
-                      if (changed == true) cubit.load();
-                    },
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Playing in', style: t(12, c: C.muted)),
-                        Row(
-                          children: [
-                            const Icon(Icons.location_on, size: 16, color: C.brand),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                s.cityName.isNotEmpty ? s.cityName : s.areaName,
-                                overflow: TextOverflow.ellipsis,
-                                style: t(16, w: FontWeight.w700),
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(LucideIcons.chevronDown, size: 16),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                Stack(
-                  children: [
-                    SquareIconButton(
-                      LucideIcons.bell,
-                      label: 'Notifications',
-                      onTap: () async {
-                        if (!await requireLogin(context)) return;
-                        if (!context.mounted) return;
-                        await context.pushNotifications();
-                        cubit.clearUnread();
-                      },
-                    ),
-                    if (unread > 0)
-                      Positioned(
-                        top: 10,
-                        right: 11,
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: C.coral,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-            child: Text('Ready for your\nnext game?', style: d(26, h: 1.15, ls: -0.5)),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    height: 50,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: C.line),
-                      boxShadow: shadowSoft,
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(LucideIcons.search, size: 18, color: C.muted),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            style: t(15),
-                            textInputAction: TextInputAction.search,
-                            onChanged: cubit.searchChanged,
-                            decoration: InputDecoration(
-                              border: InputBorder.none,
-                              isDense: true,
-                              hintText: 'Search turfs, courts, venues',
-                              hintStyle: t(15, c: C.muted),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Semantics(
-                  button: true,
-                  label: 'More filters',
-                  child: GestureDetector(
-                    onTap: () => _filters(context),
-                    child: Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: C.brand,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: shadowBrandSm,
-                      ),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          const Icon(LucideIcons.slidersHorizontal, color: Colors.white, size: 20),
-                          if (st.filters.count > 0)
-                            Positioned(
-                              top: 8,
-                              right: 8,
-                              child: Container(
-                                width: 16,
-                                height: 16,
-                                alignment: Alignment.center,
-                                decoration: const BoxDecoration(color: C.lime, shape: BoxShape.circle),
-                                child: Text('${st.filters.count}', style: t(10, w: FontWeight.w700)),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(padding: const EdgeInsets.fromLTRB(20, 22, 20, 12), child: H2('Choose your sport')),
-          SizedBox(
-            height: 98,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              children: [
-                _chip(context, st, null, 'All', null, C.brand),
-                for (final sp in s.sports) _chip(context, st, sp['id'], sp['name'], sp['image'], hex(sp['fg'])),
-              ],
-            ),
-          ),
-          if (offer['enabled'] == true) _offer(offer),
-          if (st.cityLobbies.isNotEmpty) ..._cityBoard(context, st.cityLobbies, s),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          Band(
+            title: s.areaName.isNotEmpty ? s.areaName : (s.cityName.isNotEmpty ? s.cityName : 'Choose location'),
+            subtitle: s.areaName.isNotEmpty && s.cityName.isNotEmpty ? s.cityName : 'Tap to pick your area',
+            onTitle: pickLocation,
+            actions: [if (app.loggedIn) const BookingsButton(), const ProfileButton()],
+            children: [
+              SectionTabs(active: AppTab.explore, badge: live > 0 ? '$live LIVE' : null),
+              Panel(
+                flat: true,
+                children: [
+                  Row(
                     children: [
-                      H2(venues == null ? 'Arenas near you' : '${venues.length} arena${venues.length == 1 ? '' : 's'} near you'),
-                      if (st.radiusLabel.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Icon(LucideIcons.radar, size: 13, color: C.green700),
-                            const SizedBox(width: 4),
-                            Text(st.radiusLabel, style: t(12, w: FontWeight.w600, c: C.green700)),
-                          ],
+                      Expanded(
+                        child: Container(
+                          height: 56,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+                          child: Row(
+                            children: [
+                              const DIcon(DIcons.search, size: 22, color: C.mutedInk),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: TextField(
+                                  style: t(15),
+                                  textInputAction: TextInputAction.search,
+                                  onChanged: cubit.searchChanged,
+                                  decoration: InputDecoration(
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                    hintText: 'Search turfs, courts, venues',
+                                    hintStyle: t(15, c: C.muted),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ],
+                      ),
+                      const SizedBox(width: 10),
+                      Semantics(
+                        button: true,
+                        toggled: night,
+                        label: 'Floodlit venues only',
+                        child: GestureDetector(
+                          onTap: toggleNight,
+                          child: Container(
+                            width: 66,
+                            height: 56,
+                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'NIGHT',
+                                  style: t(11, w: FontWeight.w800, c: C.mutedInk, ls: 0.6, h: 1),
+                                ),
+                                const SizedBox(height: 4),
+                                AnimatedContainer(
+                                  duration: const Duration(milliseconds: 160),
+                                  width: 34,
+                                  height: 18,
+                                  padding: const EdgeInsets.all(2),
+                                  alignment: night ? Alignment.centerRight : Alignment.centerLeft,
+                                  decoration: BoxDecoration(
+                                    color: night ? C.green700 : C.dotOff,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Container(
+                                    width: 14,
+                                    height: 14,
+                                    decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                ),
-                GestureDetector(
-                  onTap: cubit.cycleSort,
-                  child: Container(
-                    height: 36,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: C.line),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(LucideIcons.arrowUpDown, size: 14, color: C.brand),
-                        const SizedBox(width: 4),
-                        Text(exploreSortLabels[sort]!, style: t(12, w: FontWeight.w600)),
-                      ],
-                    ),
+                  UnderlineTabs(
+                    labels: [for (final k in sortKeys) _sortTabs[k] ?? k.toUpperCase()],
+                    icons: [for (final k in sortKeys) _sortIcons[k] ?? LucideIcons.listFilter],
+                    index: sortKeys.indexOf(sort).clamp(0, sortKeys.length - 1),
+                    onChange: (i) {
+                      cubit.setSort(sortKeys[i]);
+                      cubit.load();
+                    },
                   ),
+                  PanelHeadline(
+                    first.isNotEmpty ? 'Game on, ' : 'Ready to ',
+                    first.isNotEmpty ? '$first!' : 'play?',
+                    size: 34,
+                  ),
+                  _promoGrid(context, offer['enabled'] == true ? offer : null, live),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          if (s.sports.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Rule(first.isNotEmpty ? '$first, what are we playing?' : 'What are we playing?'),
+            ),
+            const SizedBox(height: 14),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: GridView.count(
+                crossAxisCount: 4,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 16,
+                crossAxisSpacing: 8,
+                childAspectRatio: 0.78,
+                children: [
+                  for (final sp in s.sports)
+                    _sportDisc(
+                      context,
+                      sp['name'],
+                      Art.sportThumb(sp['name']) ?? sp['image'],
+                      st.sportId == sp['id'],
+                      () => cubit.selectSport(st.sportId == sp['id'] ? null : sp['id']),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 28),
+          ],
+          if (topRated.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text('Top rated near you', style: d(19, ls: -0.4)),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 232,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: topRated.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
+                itemBuilder: (_, i) => _railCard(context, topRated[i]),
+              ),
+            ),
+            const SizedBox(height: 28),
+          ],
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Rule(
+              venues == null
+                  ? 'All venues around you'
+                  : '${venues.length} venue${venues.length == 1 ? '' : 's'} around you',
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 38,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: [
+                _chipButton(
+                  on: st.filters.count > 0,
+                  onTap: () => _filters(context),
+                  children: [
+                    const DIcon(DIcons.sliders, size: 16, color: C.brand),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Filters${st.filters.count > 0 ? ' · ${st.filters.count}' : ''}',
+                      style: t(13, w: FontWeight.w700),
+                    ),
+                  ],
                 ),
+                _chipButton(
+                  onTap: cubit.cycleSort,
+                  children: [
+                    Text(exploreSortLabels[sort]!, style: t(13, w: FontWeight.w700)),
+                    const DIcon(DIcons.chevD, size: 16),
+                  ],
+                ),
+                if (st.filters.count > 0)
+                  _chipButton(
+                    onTap: cubit.clearFilters,
+                    children: [Text('Clear filters', style: t(13, w: FontWeight.w700))],
+                  ),
+                if (st.radiusLabel.isNotEmpty)
+                  _chipButton(
+                    on: true,
+                    children: [
+                      const Icon(LucideIcons.radar, size: 15, color: C.brand),
+                      const SizedBox(width: 6),
+                      Text(
+                        st.radiusLabel,
+                        style: t(13, w: FontWeight.w700, c: C.brand),
+                      ),
+                    ],
+                  ),
               ],
             ),
           ),
+          const SizedBox(height: 14),
           if (st.notice.isNotEmpty && venues != null)
             Container(
-              margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 14),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(color: C.blueSoft, borderRadius: BorderRadius.circular(12)),
               child: Row(
                 children: [
                   const Icon(LucideIcons.locateFixed, size: 16, color: C.blue),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(st.notice, style: t(13, c: C.blueInk))),
-                ],
-              ),
-            ),
-          if (st.filters.count > 0 && venues != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-              child: Row(
-                children: [
-                  Text('${st.filters.count} filter${st.filters.count == 1 ? '' : 's'} on', style: t(13, c: C.muted)),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: cubit.clearFilters,
-                    child: Text('Clear', style: t(13, w: FontWeight.w700, c: C.brand)),
+                  Expanded(
+                    child: Text(st.notice, style: t(13, c: C.blueInk)),
                   ),
                 ],
               ),
@@ -453,346 +474,477 @@ class _ExploreView extends StatelessWidget {
               ),
             ),
           for (final v in venues ?? <Json>[])
-            Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 16), child: _card(context, v, s)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+              child: VenueCard(v: v, onFav: () => _toggleFav(context, v)),
+            ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(20, 28, 20, 40 + MediaQuery.of(context).padding.bottom),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Play more,\nwait less.', style: d(40, c: const Color(0xFFD9DED8), h: 1, ls: -1.6)),
+                const SizedBox(height: 8),
+                Text(
+                  'Made for weekend warriors${s.cityName.isNotEmpty ? ' in ${s.cityName}' : ''}',
+                  style: t(12.5, w: FontWeight.w600, c: C.muted),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _chip(BuildContext context, ExploreState st, int? id, String label, String? img, Color fg) {
-    final on = st.sportId == id;
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: Semantics(
-        selected: on,
-        button: true,
-        child: GestureDetector(
-          onTap: () => context.read<ExploreCubit>().selectSport(id),
-          child: SizedBox(
-            width: 72,
-            child: Column(
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  width: 68,
-                  height: 68,
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    color: on ? fg : Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                    border: on ? null : Border.all(color: C.line),
-                    boxShadow: on ? const [BoxShadow(color: Color(0x2E0C2419), blurRadius: 18, offset: Offset(0, 8))] : null,
+  Widget _chipButton({required List<Widget> children, VoidCallback? onTap, bool on = false}) => Padding(
+    padding: const EdgeInsets.only(right: 8),
+    child: Material(
+      color: on ? C.mint : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: on ? C.brand : C.chipLine),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(mainAxisSize: MainAxisSize.min, children: children),
+        ),
+      ),
+    ),
+  );
+
+  /// Dark-green promo tiles in the panel: the admin offer (big), live lobbies and squad split.
+  Widget _promoGrid(BuildContext context, Json? offer, int live) {
+    Widget round(String asset) => Positioned(
+      right: -8,
+      bottom: -8,
+      child: Container(
+        width: 74,
+        height: 74,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: C.brand, width: 3),
+        ),
+        child: ClipOval(child: Image.asset(asset, fit: BoxFit.cover)),
+      ),
+    );
+    Widget tile(String title, String sub, String asset) => SizedBox(
+      height: 138,
+      child: PanelTile(
+        radius: 22,
+        padding: EdgeInsets.zero,
+        onTap: () => context.read<AppCubit>().setTab(AppTab.matches),
+        child: Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 110,
+                    child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: d(16, c: C.sun, h: 1.1, ls: -0.3)),
                   ),
-                  child: img == null
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(18),
-                          child: Image.asset('assets/images/turf.jpg', fit: BoxFit.cover),
-                        )
-                      : Img(img, radius: BorderRadius.circular(18)),
+                  const SizedBox(height: 2),
+                  SizedBox(
+                    width: 90,
+                    child: Text(
+                      sub,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: t(12, w: FontWeight.w600, c: C.panelInk),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            round(asset),
+          ],
+        ),
+      ),
+    );
+    final lobbies = tile(
+      live > 0 ? '$live open lobbies' : 'Open lobbies',
+      'Join solo, pay your share',
+      Art.indoor,
+    );
+    final squad = tile('Split with squad', 'Pay only your share', Art.training);
+    if (offer == null) {
+      return Row(
+        children: [
+          Expanded(child: lobbies),
+          const SizedBox(width: 10),
+          Expanded(child: squad),
+        ],
+      );
+    }
+    return SizedBox(
+      height: 286,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(22),
+              child: Container(
+                color: C.green900,
+                child: Stack(
+                  children: [
+                    Positioned(
+                      left: 34,
+                      right: -10,
+                      bottom: -10,
+                      height: 150,
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.only(topLeft: Radius.circular(22)),
+                        child: Img(offer['image'] ?? Art.floodlit),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if ('${offer['tag'] ?? ''}'.isNotEmpty)
+                            Text(
+                              '${offer['tag']}'.toUpperCase(),
+                              style: t(11, w: FontWeight.w800, c: C.panelInk, ls: 1.2),
+                            ),
+                          Text('${offer['title'] ?? ''}', maxLines: 3, overflow: TextOverflow.ellipsis, style: d(22, c: C.sun, h: 1.05, ls: -0.6)),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${offer['subtitle'] ?? ''}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: t(13, w: FontWeight.w600, c: C.panelInk),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  label,
-                  style: t(12, w: on ? FontWeight.w700 : FontWeight.w500, c: on ? fg : C.ink),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
+          const SizedBox(width: 10),
+          Expanded(child: Column(children: [lobbies, const SizedBox(height: 10), squad])),
+        ],
       ),
     );
   }
 
-  /// The city board: public lobbies with open spots.
-  List<Widget> _cityBoard(BuildContext context, List<Json> lobbies, AppState s) {
-    Future<void> openBoard() async {
-      await context.pushLobbies(LobbiesArgs(areaId: s.areaId, cityName: s.cityName));
-      if (context.mounted) context.read<ExploreCubit>().load();
-    }
-    return [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
-        child: Row(
-          children: [
-            Expanded(child: H2('Open lobbies in ${s.cityName}')),
-            GestureDetector(
-              onTap: openBoard,
-              child: Text('See all', style: t(13, w: FontWeight.w700, c: C.brand)),
-            ),
-          ],
-        ),
-      ),
-      SizedBox(
-        height: 132,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          itemCount: lobbies.length.clamp(0, 8),
-          separatorBuilder: (_, _) => const SizedBox(width: 10),
-          itemBuilder: (_, i) {
-            final g = lobbies[i];
-            final locked = g['slot_state'] == 'turf_locked';
-            return Material(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(18),
-                onTap: openBoard,
-                child: Container(
-                  width: 236,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: C.line)),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          SportPill(asMap(g['sport'])),
-                          const SizedBox(width: 6),
-                          Pill(
-                            locked ? 'Turf locked' : 'Crowdfunding',
-                            bg: locked ? C.mint : C.amberSoft,
-                            fg: locked ? C.green700 : C.amber,
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          ),
-                          const Spacer(),
-                          Text(
-                            (g['per_head'] ?? 0) > 0 ? inr(g['per_head']) : 'Free',
-                            style: t(12, w: FontWeight.w700, c: C.brand),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text('${g['date_label']} · ${g['time_label']}', style: t(14, w: FontWeight.w700)),
-                      Text(
-                        '${g['venue']?['name'] ?? ''}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: t(12, c: C.muted),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${g['spots_left']} spot${g['spots_left'] == 1 ? '' : 's'} left · ${g['taken']}/${g['capacity']} in',
-                        style: t(12, w: FontWeight.w600, c: C.green700),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    ];
-  }
-
-  Widget _offer(Json o) => Container(
-    margin: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-    constraints: const BoxConstraints(minHeight: 128),
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(22),
-      child: Stack(
+  /// Round sport photo with a forest ring when picked.
+  Widget _sportDisc(BuildContext context, String label, String? img, bool on, VoidCallback onTap) => Semantics(
+    selected: on,
+    button: true,
+    label: label,
+    child: GestureDetector(
+      onTap: onTap,
+      child: Column(
         children: [
-          Positioned.fill(child: Img(o['image'], fallback: 'stumps')),
-          const Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [Color(0xE00A2816), Color(0x8C0A2816), Color(0x000A2816)], stops: [0, 0.55, 1]),
-              ),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: on ? const [BoxShadow(color: C.brand, spreadRadius: 3)] : null,
             ),
+            child: ClipOval(child: Img(img)),
           ),
-          Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Pill(o['tag'] ?? '', bg: C.lime, fg: C.ink),
-                const SizedBox(height: 6),
-                Text(o['title'] ?? '', style: d(20, c: Colors.white, h: 1.15)),
-                const SizedBox(height: 6),
-                Text(o['subtitle'] ?? '', style: t(12, c: C.limeSoft)),
-              ],
-            ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: t(12.5, w: on ? FontWeight.w800 : FontWeight.w700, c: on ? C.ink : C.mutedInk),
           ),
         ],
       ),
     ),
   );
 
-  Widget _card(BuildContext context, Json v, AppState s) {
-    final fav = s.saved.contains(v['id']);
+  Widget _railCard(BuildContext context, Json v) {
     final km = v['distance_km'];
-    return Container(
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: shadowCard),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          Material(
-            color: Colors.white,
-            child: InkWell(
-              onTap: () async {
-                await context.pushVenue(v['id']); // favourites, open-lobby counts may change there
-                if (context.mounted) context.read<ExploreCubit>().load();
-              },
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(
-                    height: 170,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Img(v['image']),
-                        const DecoratedBox(
-                          decoration: BoxDecoration(
+    final tag = '${v['highlight'] ?? ''}'.isNotEmpty
+        ? '${v['highlight']}'
+        : (v['is_fast_filling'] == true ? 'Fast filling' : '');
+    return GestureDetector(
+      onTap: () => context.pushVenue(v['id']),
+      child: SizedBox(
+        width: 152,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: SizedBox(
+                width: 152,
+                height: 152,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Img(v['image']),
+                    if (tag.isNotEmpty)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(10, 22, 10, 8),
+                          decoration: const BoxDecoration(
                             gradient: LinearGradient(
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
-                              stops: [0.5, 1],
-                              colors: [Colors.transparent, Color(0x80000000)],
+                              colors: [Color(0x000C2419), Color(0xE00C2419)],
                             ),
                           ),
-                        ),
-                        Positioned(
-                          left: 12,
-                          top: 12,
-                          child: Row(
-                            children: [
-                              if (v['is_fast_filling'] == true) ...[
-                                const Pill('Fast filling', bg: C.lime, fg: C.ink),
-                                const SizedBox(width: 6),
-                              ],
-                              if ((v['open_lobbies'] ?? 0) > 0)
-                                Pill(
-                                  '${v['open_lobbies']} open ${v['open_lobbies'] == 1 ? 'lobby' : 'lobbies'}',
-                                  bg: Colors.white,
-                                  fg: C.green700,
-                                ),
-                            ],
+                          child: Text(
+                            tag,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: t(13, w: FontWeight.w800, c: Colors.white),
                           ),
                         ),
-                        if (km != null)
-                          Positioned(
-                            left: 12,
-                            bottom: 12,
-                            child: Row(
-                              children: [
-                                const Icon(Icons.location_on, size: 14, color: Colors.white),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '${(km as num).toStringAsFixed(1)} km',
-                                  style: t(12, w: FontWeight.w600, c: Colors.white),
-                                ),
-                              ],
-                            ),
-                          ),
-                        Positioned(
-                          right: 12,
-                          bottom: 12,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.star_rounded, size: 14, color: C.star),
-                                const SizedBox(width: 3),
-                                Text('${v['rating']}', style: t(12, w: FontWeight.w700)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(v['name'], style: d(18, h: 1.2)),
-                                  const SizedBox(height: 2),
-                                  Text('${v['area']} · ${_count(v['review_count'])} reviews', style: t(13, c: C.muted)),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text('from', style: t(12, c: C.muted, h: 1.2)),
-                                Text.rich(
-                                  TextSpan(
-                                    children: [
-                                      TextSpan(
-                                        text: inr(v['price_from']),
-                                        style: d(18, c: C.brand),
-                                      ),
-                                      TextSpan(
-                                        text: '/hr',
-                                        style: t(12, c: C.muted),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            for (final sp in asList(v['sports'])) SportPill(sp, size: 12),
-                            if ((v['highlight'] ?? '').toString().isNotEmpty)
-                              Pill(
-                                v['highlight'],
-                                bg: C.chip,
-                                fg: C.muted,
-                                size: 12,
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Positioned(
-            top: 10,
-            right: 10,
-            child: Semantics(
-              button: true,
-              label: fav ? 'Remove from favourites' : 'Save to favourites',
-              child: GestureDetector(
-                onTap: () => _toggleFav(context, v),
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.95), shape: BoxShape.circle),
-                  child: Icon(fav ? Icons.favorite : Icons.favorite_border, size: 19, color: C.rose),
+                      ),
+                  ],
                 ),
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              '${v['name']}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: t(15, w: FontWeight.w800),
+            ),
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                Container(
+                  width: 17,
+                  height: 17,
+                  decoration: const BoxDecoration(color: C.green700, shape: BoxShape.circle),
+                  child: const DIcon(DIcons.star, size: 11, color: Colors.white),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${v['rating']}${km != null ? ' · ${(km as num).toStringAsFixed(1)} km' : ''}',
+                  style: t(13, w: FontWeight.w700),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              asList(v['sports']).map((x) => x['name']).join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: t(12.5, c: C.muted),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-String _count(dynamic n) {
-  final v = (n ?? 0) as int;
-  return v >= 1000 ? '${(v / 1000).toStringAsFixed(1)}k' : '$v';
+/// Venue card (redesign): photo with open-lobby / fast-filling pill and heart, name + rating badge, sports, distance,
+/// rating count and price.
+class VenueCard extends StatelessWidget {
+  final Json v;
+  final VoidCallback onFav;
+  const VenueCard({super.key, required this.v, required this.onFav});
+
+  @override
+  Widget build(BuildContext context) {
+    final fav = context.select<AppCubit, bool>((c) => c.state.saved.contains(v['id']));
+    final km = v['distance_km'];
+    final lobbies = (v['open_lobbies'] ?? 0) as int;
+    final sports = asList(v['sports']).map((x) => x['name']).join(' · ');
+    final highlight = '${v['highlight'] ?? ''}';
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFF0EEE8)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0D0C2419), blurRadius: 2, offset: Offset(0, 1)),
+          BoxShadow(color: Color(0x120C2419), blurRadius: 20, offset: Offset(0, 6)),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(22),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => context.pushVenue(v['id']),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                height: 190,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Img(v['image']),
+                    if (highlight.isNotEmpty)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(16, 30, 16, 12),
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Color(0x000C2419), Color(0xE00C2419)],
+                            ),
+                          ),
+                          child: Text(
+                            highlight,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: d(20, c: Colors.white, ls: -0.5),
+                          ),
+                        ),
+                      ),
+                    if (lobbies > 0 || v['is_fast_filling'] == true)
+                      Positioned(
+                        top: 12,
+                        left: 12,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(999)),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 7,
+                                height: 7,
+                                decoration: const BoxDecoration(
+                                  color: C.coral,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [BoxShadow(color: Color(0x99F2552C), blurRadius: 5)],
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                lobbies > 0 ? '$lobbies open ${lobbies == 1 ? 'lobby' : 'lobbies'}' : 'Fast filling',
+                                style: t(11.5, w: FontWeight.w800, h: 1.2),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      top: 12,
+                      right: 12,
+                      child: Semantics(
+                        button: true,
+                        label: fav ? 'Remove ${v['name']} from saved' : 'Save ${v['name']}',
+                        child: Material(
+                          color: const Color(0xF2FFFFFF),
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: onFav,
+                            child: SizedBox(
+                              width: 36,
+                              height: 36,
+                              child: DIcon(
+                                fav ? DIcons.heartSolid : DIcons.heart,
+                                size: 19,
+                                color: fav ? C.coral : C.brand,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${v['name']}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: d(18, ls: -0.4),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        RatingBadge(v['rating']),
+                      ],
+                    ),
+                    if (sports.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        sports,
+                        style: t(13.5, w: FontWeight.w600, c: C.mutedInk),
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const DIcon(DIcons.pin, size: 15, color: C.muted),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '${km != null ? '${(km as num).toStringAsFixed(1)} km · ' : ''}${v['area']}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: t(13, c: C.muted),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(0, 10, 0, 8),
+                      child: DashedLine(color: C.hair),
+                    ),
+                    Row(
+                      children: [
+                        const DIcon(DIcons.bolt, size: 16, color: C.coral),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '${compact(v['review_count'])} ratings',
+                            style: t(13, w: FontWeight.w700, c: C.green700),
+                          ),
+                        ),
+                        Text.rich(
+                          TextSpan(
+                            text: 'from ${inr(v['price_from'])}',
+                            children: [
+                              TextSpan(
+                                text: '/hr',
+                                style: t(12, w: FontWeight.w600, c: C.muted),
+                              ),
+                            ],
+                          ),
+                          style: t(14, w: FontWeight.w800),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

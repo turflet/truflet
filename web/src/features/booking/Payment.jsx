@@ -1,8 +1,9 @@
 /** 7 · Review & pay: hold countdown, coupon, price details, pay (the gateway checkout picks the method). URL: /payment/:bookingId
- *  Phone = the Flutter screen. Desktop = details on the left, sticky price + pay card on the right. */
+ *  Phone = dark band + green summary panel + sticky pay bar (redesign). Desktop = details on the left, sticky price + pay card on the right. */
 import { useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { ArrowRight, Clock, ShieldCheck } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
+import { Check, Clock, ShieldCheck, Tag } from '../../ui/icons';
 import { useSession } from '../../app/session';
 import { routes, useBack } from '../../app/nav';
 import { Shell } from '../../app/Shell';
@@ -14,6 +15,7 @@ import { useData, useIsDesktop, useNow } from '../../ui/hooks';
 import { useOverlay } from '../../ui/overlay';
 import { BackSquare, CardBox, ErrorRetry, H2, Img, KV, ListSkeleton, PriceRow, Spinner, SportPill } from '../../ui/kit';
 import { reserveTab, showUpiCheckout } from './upiCheckout';
+import { BandButton, GoButton, Panel, Rule, StickyBar } from '../../ui/brand';
 
 export default function PaymentPage() {
   const id = Number(useParams().bookingId);
@@ -237,33 +239,122 @@ function Payment({ booking: b, setBooking }) {
     );
   }
 
+  // Phone (redesign): dark band with the hold timer, booking summary in the green panel, coupon + bill, sticky pay bar.
   return (
-    <div className="page" style={{ minHeight: '100dvh', paddingBottom: 110 }}>
-      <div style={{ padding: 'calc(var(--safe-top) + 8px) 20px 12px', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <BackSquare onClick={back} />
-        <div style={{ flex: 1, ...d(20) }}>Review & pay</div>
-        {holdPill}
-      </div>
-      <div style={{ padding: '4px 20px 24px', display: 'grid', gap: 16 }}>
-        {summaryCard}
-        {coupon}
-        {prices}
-        <div>{reassure}</div>
-      </div>
-      <div
-        style={{
-          position: 'fixed',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: 40,
-          padding: '14px 20px calc(14px + var(--safe-bottom))',
-          background: '#fff',
-          borderTop: `1px solid ${C.line}`,
-        }}
-      >
-        {payBtn}
-      </div>
+    <div className="page" style={{ minHeight: '100dvh', paddingBottom: 'calc(110px + var(--safe-bottom))' }}>
+      <header style={{ background: C.brandDark, paddingTop: 'var(--safe-top)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '20px 16px 16px' }}>
+          <BandButton onClick={back} />
+          <span style={{ flex: 1, ...d(22, { c: '#fff', ls: -0.6 }) }}>Review &amp; pay</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderRadius: 999, background: left === 0 ? C.coralSoft : C.sun, ...t(12.5, { w: 800, h: 1.2 }) }}>
+            <Clock size={15} color={C.ink} strokeWidth={2.2} />
+            {left === 0 ? 'Hold expired' : `Held ${mmss(left).padStart(5, '0')}`}
+          </span>
+        </div>
+        <Panel padding="18px 16px 20px" gap={14}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <span style={{ width: 64, height: 64, borderRadius: 16, overflow: 'hidden', flex: 'none' }}>
+              <Img url={venue.image} />
+            </span>
+            <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span className="clamp1" style={t(17, { w: 800, c: '#fff' })}>
+                {venue.name}
+              </span>
+              <span className="clamp1" style={t(12.5, { w: 600, c: C.panelInk })}>
+                {venue.area}, {venue.city}
+              </span>
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: 14, borderRadius: 18, background: C.green900 }}>
+            <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <span style={t(15, { w: 800, c: '#fff' })}>
+                {court.name} · {sport.name}
+              </span>
+              <span style={t(13, { w: 600, c: C.panelInk })}>
+                {b.date_label} · {b.time_short} · {b.duration} hr{b.duration === 1 ? '' : 's'}
+              </span>
+              <button onClick={back} style={{ alignSelf: 'flex-start', marginTop: 2, ...t(12.5, { w: 800, c: C.sun }) }}>
+                Change slot
+              </button>
+            </span>
+            <span style={t(16, { w: 800, c: '#fff' })}>{inr(b.slot_amount)}</span>
+          </div>
+        </Panel>
+      </header>
+
+      <main style={{ display: 'flex', flexDirection: 'column', gap: 22, padding: '22px 16px' }}>
+        {applied ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: 18, border: `1.5px dashed ${C.green700}`, background: '#F4F8F5' }}>
+            <span style={{ width: 40, height: 40, borderRadius: '50%', background: C.green700, display: 'grid', placeItems: 'center', flex: 'none' }}>
+              <Check size={20} color="#fff" strokeWidth={2.4} />
+            </span>
+            <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+              <span style={t(14, { w: 800 })}>
+                {b.coupon} applied · {inr(b.discount)} saved
+              </span>
+              <span style={t(12, { w: 600, c: C.muted })}>Taken off your total below</span>
+            </span>
+            <button disabled={couponBusy} onClick={toggleCoupon} style={{ padding: '8px 0', ...t(13, { w: 800, c: '#B4401F' }) }}>
+              {couponBusy ? <Spinner size={16} color="#B4401F" /> : 'Remove'}
+            </button>
+          </div>
+        ) : (
+          <div style={{ padding: '12px 12px 12px 16px', borderRadius: 18, border: `1.5px dashed ${C.chipLine}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Tag size={20} color={C.green700} />
+              <input value={code} aria-label="Coupon code" placeholder="Have a coupon code?" onChange={(e) => setCode(e.target.value.toUpperCase())} style={t(14, { w: 700 })} />
+              <button
+                className="tap"
+                disabled={couponBusy || !code.trim()}
+                onClick={toggleCoupon}
+                style={{ height: 40, padding: '0 16px', borderRadius: 12, background: code.trim() ? C.brand : C.chip, flex: 'none', ...t(13, { w: 800, c: code.trim() ? '#fff' : C.muted }) }}
+              >
+                {couponBusy ? <Spinner size={16} /> : 'Apply'}
+              </button>
+            </div>
+            {couponError && <div style={{ marginTop: 8, ...t(12, { c: C.warnInk }) }}>{couponError}</div>}
+          </div>
+        )}
+
+        <section id="bill" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Rule>Bill details</Rule>
+          <div style={{ borderRadius: 20, border: `1px solid ${C.hair}`, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <BillRow k={`Court fee (${b.duration} × ${inr(b.rate)}${peak ? ' peak' : ''})`} v={inr(b.slot_amount)} />
+            <BillRow k="Convenience fee" v={inr(b.convenience_fee)} />
+            <BillRow k={`GST on fee (${Math.round(app.config.gst_percent ?? 18)}%)`} v={inr(b.gst)} />
+            {applied && <BillRow k={`Coupon ${b.coupon}`} v={`−${inr(b.discount)}`} green />}
+            <div style={{ borderTop: `1px solid ${C.hair}`, margin: '4px 0' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', ...t(16, { w: 800 }) }}>
+              <span>To pay</span>
+              <span>{inr(b.total)}</span>
+            </div>
+          </div>
+        </section>
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '0 4px', ...t(12.5, { c: C.muted, h: 1.5 }) }}>
+          <ShieldCheck size={18} color={C.green700} style={{ flex: 'none', marginTop: 1 }} />
+          <span>Secure UPI payment. Not ready? Pay later from My bookings before the hold ends. Refunds follow the venue's cancellation policy.</span>
+        </div>
+      </main>
+
+      <StickyBar>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 'none' }}>
+          <span style={d(19, { ls: -0.4 })}>{inr(b.total)}</span>
+          <a href="#bill" style={t(12, { w: 800, c: C.green700 })}>
+            View bill
+          </a>
+        </div>
+        <GoButton loading={busy} onClick={pay}>
+          Pay {inr(b.total)}
+        </GoButton>
+      </StickyBar>
     </div>
   );
 }
+
+const BillRow = ({ k, v, green }) => (
+  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, ...t(14, { w: green ? 800 : 600, c: green ? C.green700 : C.ink }) }}>
+    <span>{k}</span>
+    <span>{v}</span>
+  </div>
+);

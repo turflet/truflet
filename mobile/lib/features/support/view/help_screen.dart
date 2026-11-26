@@ -4,7 +4,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/router/app_navigation.dart';
-import '../../../app/session/app_state.dart';
 import '../../../app/session/app_cubit.dart';
 import '../../../core/network/json.dart';
 import '../../../core/theme/theme.dart';
@@ -12,7 +11,6 @@ import '../../../core/widgets/widgets.dart';
 import '../../../data/repositories/booking_repository.dart';
 import '../../../data/repositories/support_repository.dart';
 import '../../auth/auth_guard.dart';
-import '../../shell/widgets/bottom_nav.dart';
 import '../cubit/help_cubit.dart';
 
 /// 12 · Help & support (in Profile). [booking] pre-selects the booking a ticket is about.
@@ -110,9 +108,8 @@ class _HelpViewState extends State<_HelpView> {
     final sup = asMap(context.watch<AppCubit>().state.config['support']);
     final cfg = context.watch<AppCubit>().state.config;
     final top = MediaQuery.of(context).padding.top;
-    return WithNav(
-      current: AppTab.profile,
-      child: ListView(
+    return Scaffold(
+      body: ListView(
         padding: const EdgeInsets.only(bottom: 24),
         children: [
           Container(

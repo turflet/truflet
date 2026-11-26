@@ -69,7 +69,7 @@ export default function Board() {
                   <td style={{ position: 'sticky', left: 0, background: '#fff', padding: '0 10px 0 4px', whiteSpace: 'nowrap', ...t(14, { w: 700 }) }}>{r.court.name}</td>
                   {asList(r.cells).map((c) => {
                     const b = c.booking;
-                    const [bg, fg] = b ? (STATUS[b.status] ?? [C.chip, C.ink]) : c.blocked ? ['#E9ECE6', C.muted] : [C.ground, C.muted];
+                    const [bg, fg] = b ? (STATUS[b.status] ?? [C.chip, C.ink]) : c.blocked ? ['#E9ECE6', C.muted] : [C.paper, C.muted];
                     return (
                       <td key={c.hour} style={{ padding: 0 }}>
                         <button
@@ -114,7 +114,7 @@ export default function Board() {
               [C.amberSoft, 'Awaiting payment'],
               [C.mutedInk, 'Completed'],
               ['#E9ECE6', 'Blocked'],
-              [C.ground, 'Free'],
+              [C.paper, 'Free'],
             ].map(([c, l]) => (
               <span key={l} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 14, height: 14, borderRadius: 4, background: c, border: `1px solid ${C.line}` }} />

@@ -94,7 +94,7 @@ function Layout({ meta, children }) {
 
   const sidebar = <Sidebar meta={meta} />;
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', background: C.ground }}>
+    <div style={{ minHeight: '100vh', display: 'flex', background: C.paper }}>
       {desktop ? (
         <aside style={{ width: 268, flex: 'none', position: 'sticky', top: 0, height: '100vh' }}>{sidebar}</aside>
       ) : (

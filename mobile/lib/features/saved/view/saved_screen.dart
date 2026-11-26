@@ -11,7 +11,6 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../../data/repositories/venue_repository.dart';
 import '../../booking/open_slot_booking.dart';
-import '../../shell/widgets/bottom_nav.dart';
 import '../cubit/saved_cubit.dart';
 
 /// 11 · Saved venues (in Profile)
@@ -60,9 +59,8 @@ class _SavedViewState extends State<_SavedView> {
     final alerts = s.user?['slot_alerts_on'] == true;
     final top = MediaQuery.of(context).padding.top;
     final n = items?.length ?? 0;
-    return WithNav(
-      current: AppTab.profile,
-      child: ListView(
+    return Scaffold(
+      body: ListView(
         padding: EdgeInsets.fromLTRB(0, top + 8, 0, 20),
         children: [
           Padding(

@@ -5,7 +5,7 @@ class C {
   static const ink = Color(0xFF0C2419);
   static const muted = Color(0xFF5E6B63);
   static const mutedInk = Color(0xFF3D4B43);
-  static const ground = Color(0xFFF7F5EF);
+  static const ground = Color(0xFFFFFFFF);
   static const line = Color(0xFFE5E2D8);
   static const divider = Color(0xFFEFECE4);
   static const brand = Color(0xFF143D2B);
@@ -46,6 +46,14 @@ class C {
   static const warnBg = Color(0xFFFDF1E7);
   static const warnInk = Color(0xFF8A3C07);
   static const star = Color(0xFFEAB308);
+
+  // Redesign: dark header band, green panel, sun-yellow accents.
+  static const sun = Color(0xFFFFC95C);
+  static const panelInk = Color(0xFFCFE0D5);
+  static const bandInk = Color(0xFFB9CCBF);
+  static const hair = Color(0xFFECEAE3);
+  static const chipLine = Color(0xFFDCD9CF);
+  static const discLine = Color(0xFFDCE7DF);
 }
 
 Color hex(String? s, [Color fallback = C.brand]) {

@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/network/json.dart';
 import '../../../core/theme/theme.dart';
+import '../../../core/utils/art.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/widgets.dart';
 
@@ -54,8 +55,8 @@ class FillBar extends StatelessWidget {
     child: LinearProgressIndicator(
       value: capacity == 0 ? 0 : (taken / capacity).clamp(0, 1).toDouble(),
       minHeight: height,
-      backgroundColor: C.segment,
-      color: C.brand,
+      backgroundColor: C.chip,
+      color: C.green700,
     ),
   );
 }
@@ -153,8 +154,8 @@ Widget perHead(Json lobby, {double size = 18}) {
   );
 }
 
-/// Screen 3 card: host reliability, Turf Locked vs Crowdfunding, filled vs open spots, per-head cost and
-/// a role-aware action (Request to join / Accept invite / Requested / Open Match Room).
+/// Lobby card (redesign): sport photo header with the slot state, host + reliability, fill bar, per-head share and a
+/// role-aware action (Request to join / Accept invite / Requested / Open room).
 class LobbyCard extends StatelessWidget {
   final Json lobby;
   final VoidCallback? onAction;
@@ -166,6 +167,7 @@ class LobbyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = lobby;
     final host = asMap(g['host']);
+    final sport = asMap(g['sport']);
     final taken = (g['taken'] as int?) ?? 0, capacity = (g['capacity'] as int?) ?? 0;
     final left = (g['spots_left'] as int?) ?? 0;
     final role = g['my_role'];
@@ -181,97 +183,188 @@ class LobbyCard extends StatelessWidget {
       ),
       _ => (left == 0 ? 'Full' : 'Request to join', left == 0 ? C.chip : C.brand, left == 0 ? C.muted : Colors.white),
     };
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: shadowCard,
-            color: Colors.white,
-          ),
+    final photo = Art.sportScene(sport['name']);
+    final locked = g['status'] == 'locked';
+    final where = showVenue ? '${g['venue']?['name'] ?? ''}' : '${g['court']?['name'] ?? ''}';
+    final perHeadAmount = (g['per_head'] as int?) ?? 0;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFF0EEE8)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0D0C2419), blurRadius: 2, offset: Offset(0, 1)),
+          BoxShadow(color: Color(0x120C2419), blurRadius: 20, offset: Offset(0, 6)),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(22),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  SportPill(asMap(g['sport'])),
-                  const SizedBox(width: 6),
-                  SlotStatePill(g),
-                  const Spacer(),
-                  perHead(g),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text('${g['date_label']} · ${g['time_label']}', style: d(17)),
-              const SizedBox(height: 2),
-              Text(
-                [
-                  if (showVenue) '${g['venue']?['name']}, ${g['venue']?['area']} · ${g['court']?['name']}',
-                  if (!showVenue) '${g['court']?['name']}',
-                ].join(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: t(13, c: C.muted),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Avatar(host['initials'] ?? '', size: 28, index: 1),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          role == 'invited' ? '${host['name'] ?? ''} invited you' : 'Hosted by ${host['name'] ?? ''}',
-                          style: t(13, w: FontWeight.w600, c: role == 'invited' ? C.orangeInk : C.ink),
+              SizedBox(
+                height: 120,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Img(photo),
+                    const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          stops: [0.3, 1],
+                          colors: [Color(0x000C2419), Color(0xD90C2419)],
                         ),
-                        Row(
+                      ),
+                    ),
+                    Positioned(
+                      top: 12,
+                      left: 12,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: locked ? C.mint : C.coralSoft,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              host['reliability'] == null ? LucideIcons.sparkles : LucideIcons.shieldCheck,
-                              size: 12,
-                              color: C.green700,
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(color: locked ? C.green700 : C.coral, shape: BoxShape.circle),
                             ),
-                            const SizedBox(width: 4),
-                            Text(reliability(host), style: t(11, c: C.green700)),
+                            const SizedBox(width: 5),
+                            Text(
+                              locked
+                                  ? 'Turf locked'
+                                  : (g['status'] == 'crowdfunding'
+                                        ? 'Crowdfunding'
+                                        : '${g['status_label'] ?? g['status']}'),
+                              style: t(11, w: FontWeight.w800, c: locked ? C.brand : C.orangeInk, h: 1.2),
+                            ),
                           ],
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 14,
+                      right: 14,
+                      bottom: 10,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${sport['name'] ?? ''}${where.isNotEmpty ? ' · $where' : ''}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: d(17, c: Colors.white, ls: -0.3),
+                          ),
+                          Text(
+                            '${g['date_label']} · ${g['time_label']}${showVenue && g['venue']?['area'] != null ? ' · ${g['venue']['area']}' : ''}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: t(12.5, w: FontWeight.w600, c: C.mint),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Avatar(host['initials'] ?? '', size: 38),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                role == 'invited'
+                                    ? '${host['name'] ?? ''} invited you'
+                                    : '${host['name'] ?? ''} is hosting',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: t(14, w: FontWeight.w800, c: role == 'invited' ? C.orangeInk : C.ink),
+                              ),
+                              Row(
+                                children: [
+                                  host['reliability'] == null
+                                    ? const Icon(LucideIcons.sparkles, size: 12, color: C.green700)
+                                    : const DIcon(DIcons.shield, size: 12, color: C.green700),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    reliability(host),
+                                    style: t(12, w: FontWeight.w600, c: C.muted),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        AvatarStack((g['avatars'] as List? ?? const []).cast<String>(), size: 24, max: 4),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('$taken of $capacity joined', style: t(12.5, w: FontWeight.w700)),
+                        ),
+                        Text(
+                          left == 0 ? 'Full' : '$left spot${left == 1 ? '' : 's'} left',
+                          style: t(12.5, w: FontWeight.w700, c: left == 0 ? C.muted : C.orangeInk),
                         ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              FillBar(taken: taken, capacity: capacity),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  AvatarStack((g['avatars'] as List? ?? const []).cast<String>()),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '$taken/$capacity joined · ${left == 0 ? 'full' : '$left spot${left == 1 ? '' : 's'} open'}',
-                      style: t(12, c: C.muted),
+                    const SizedBox(height: 6),
+                    FillBar(taken: taken, capacity: capacity, height: 8),
+                    const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: DashedLine()),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: perHeadAmount > 0
+                              ? Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(inr(perHeadAmount), style: d(18, ls: -0.4)),
+                                    Text(
+                                      'per player · held in escrow',
+                                      style: t(11.5, w: FontWeight.w600, c: C.muted),
+                                    ),
+                                  ],
+                                )
+                              : Text(
+                                  'Free · host pays',
+                                  style: t(13, w: FontWeight.w800, c: C.brand),
+                                ),
+                        ),
+                        if (onAction != null)
+                          GhostButton(
+                            label,
+                            height: 44,
+                            radius: 14,
+                            fontSize: 14,
+                            bg: bg,
+                            fg: fg,
+                            border: Colors.transparent,
+                            onTap: (role == null || role == 'declined') && left == 0 ? null : onAction,
+                          ),
+                      ],
                     ),
-                  ),
-                  if (onAction != null)
-                    GhostButton(
-                      label,
-                      height: 38,
-                      radius: 12,
-                      fontSize: 13,
-                      bg: bg,
-                      fg: fg,
-                      border: Colors.transparent,
-                      onTap: (role == null || role == 'declined') && left == 0 ? null : onAction,
-                    ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),

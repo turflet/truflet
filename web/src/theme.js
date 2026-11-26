@@ -4,7 +4,8 @@ export const C = {
   ink: '#0C2419',
   muted: '#5E6B63',
   mutedInk: '#3D4B43',
-  ground: '#F7F5EF',
+  ground: '#FFFFFF',
+  paper: '#F7F5EF', // admin panel background
   line: '#E5E2D8',
   divider: '#EFECE4',
   brand: '#143D2B',
@@ -44,6 +45,13 @@ export const C = {
   warnInk: '#8A3C07',
   star: '#EAB308',
   white: '#FFFFFF',
+  // redesign: dark header band, green panel, sun-yellow accents
+  sun: '#FFC95C',
+  panelInk: '#CFE0D5',
+  bandInk: '#B9CCBF',
+  hair: '#ECEAE3',
+  chipLine: '#DCD9CF',
+  discLine: '#DCE7DF',
 };
 
 /** `#RRGGBB` from the API, or the fallback. */

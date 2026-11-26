@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../app/session/app_cubit.dart';
 import '../../../core/network/json.dart';
 import '../../../core/theme/theme.dart';
+import '../../../core/utils/art.dart';
 import '../../../core/utils/external_actions.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/widgets.dart';
@@ -16,15 +17,15 @@ import '../../../app/router/app_routes.dart';
 import '../cubit/venue_details_cubit.dart';
 
 const amenityIcons = {
-  'parking': LucideIcons.squareParking,
-  'floodlights': LucideIcons.lightbulb,
+  'parking': DIcons.parking,
+  'floodlights': DIcons.floodlights,
   'covered': LucideIcons.umbrella,
   'washroom': LucideIcons.bath,
   'water': LucideIcons.droplet,
-  'changing': LucideIcons.shirt,
+  'changing': DIcons.changing,
   'equipment': LucideIcons.dumbbell,
   'wifi': LucideIcons.wifi,
-  'cafe': LucideIcons.coffee,
+  'cafe': DIcons.cafe,
   'first_aid': LucideIcons.cross,
   'seating': LucideIcons.armchair,
 };
@@ -61,8 +62,13 @@ class _VenueDetailsViewState extends State<_VenueDetailsView> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: DataBuilder<VenueDetailsCubit, Json>(skeleton: const VenueDetailsSkeleton(), builder: (context, v) => _body(v)),
+    return LightStatusBar(
+      child: Scaffold(
+        body: DataBuilder<VenueDetailsCubit, Json>(
+          skeleton: const VenueDetailsSkeleton(),
+          builder: (context, v) => _body(v),
+        ),
+      ),
     );
   }
 
@@ -74,6 +80,47 @@ class _VenueDetailsViewState extends State<_VenueDetailsView> {
     final fav = s.saved.contains(v['id']);
     final top = MediaQuery.of(context).padding.top;
     final hero = photos.isEmpty ? v['image'] : photos[photo.clamp(0, photos.length - 1)];
+    final lobbies = (v['open_lobbies'] ?? 0) as int;
+    final amenities = asList(v['amenities']);
+    final rules = asList(v['rules']);
+    final policy = asList(v['cancellation_policy']);
+    final km = v['distance_km'];
+
+    Future<void> openSlots(Json sp) async {
+      final cubit = context.read<VenueDetailsCubit>();
+      await context.pushSlotBooking(SlotBookingArgs(venue: v, initialSportId: sp['sport_id']));
+      if (!cubit.isClosed) cubit.load();
+    }
+
+    Future<void> openLobbies() async {
+      final cubit = context.read<VenueDetailsCubit>();
+      await context.pushLobbies(LobbiesArgs(venue: v, subtitle: '${v['name']} · ${v['area']}'));
+      if (!cubit.isClosed) cubit.load();
+    }
+
+    Widget round(Object icon, String label, VoidCallback onTap, {Color color = C.ink, bool filled = false}) =>
+        Semantics(
+          button: true,
+          label: label,
+          child: Material(
+            color: const Color(0xF2FFFFFF),
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              child: SizedBox(width: 44, height: 44, child: Center(child: glyph(icon, size: 20, color: color))),
+            ),
+          ),
+        );
+
+    Widget section(String title, Widget child) => Padding(
+      padding: const EdgeInsets.only(bottom: 26),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [Rule(title), const SizedBox(height: 12), child],
+      ),
+    );
+
     return Column(
       children: [
         Expanded(
@@ -81,10 +128,11 @@ class _VenueDetailsViewState extends State<_VenueDetailsView> {
             padding: EdgeInsets.zero,
             children: [
               SizedBox(
-                height: 330,
+                height: 300 + top,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
+                    Container(color: C.brandDark),
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 250),
                       child: Img(hero, key: ValueKey(hero)),
@@ -94,216 +142,357 @@ class _VenueDetailsViewState extends State<_VenueDetailsView> {
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          stops: [0, 0.35, 0.6, 1],
-                          colors: [Color(0x59000000), Colors.transparent, Colors.transparent, Color(0x73000000)],
+                          stops: [0, 0.34, 0.6, 1],
+                          colors: [Color(0x8C0B2A1D), Color(0x000B2A1D), Color(0x000B2A1D), Color(0xE60B2A1D)],
                         ),
                       ),
                     ),
                     Positioned(
-                      top: top + 8,
-                      left: 20,
-                      right: 20,
+                      top: top + 18,
+                      left: 16,
+                      right: 16,
                       child: Row(
                         children: [
-                          const BackSquare(translucent: true),
+                          round(DIcons.back, 'Back', () => Navigator.of(context).maybePop()),
                           const Spacer(),
-                          SquareIconButton(
-                            LucideIcons.share2,
-                            translucent: true,
-                            iconSize: 18,
-                            label: 'Share',
-                            onTap: () {
-                              SharePlus.instance.share(ShareParams(text: '${v['name']} on Turflet — ${v['address']}'));
-                            },
+                          round(
+                            DIcons.share,
+                            'Share venue',
+                            () => SharePlus.instance.share(
+                              ShareParams(text: '${v['name']} on Turflet — ${v['address']}'),
+                            ),
                           ),
                           const SizedBox(width: 10),
                           Semantics(
                             button: true,
-                            label: 'Save to favourites',
-                            child: GestureDetector(
-                              onTap: () => _fav(v),
-                              child: Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.95),
-                                  borderRadius: BorderRadius.circular(14),
+                            label: fav ? 'Remove from saved' : 'Save venue',
+                            child: Material(
+                              color: const Color(0xF2FFFFFF),
+                              shape: const CircleBorder(),
+                              clipBehavior: Clip.antiAlias,
+                              child: InkWell(
+                                onTap: () => _fav(v),
+                                child: SizedBox(
+                                  width: 44,
+                                  height: 44,
+                                  child: DIcon(
+                                    fav ? DIcons.heartSolid : DIcons.heart,
+                                    size: 20,
+                                    color: fav ? C.coral : C.ink,
+                                  ),
                                 ),
-                                child: Icon(fav ? Icons.favorite : Icons.favorite_border, size: 18, color: C.rose),
                               ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    if (photos.length > 1)
-                      Positioned(
-                        left: 20,
-                        bottom: 44,
-                        child: Row(
-                          children: [
-                            for (var i = 0; i < photos.length && i < 5; i++)
-                              GestureDetector(
-                                onTap: () => setState(() => photo = i),
-                                child: Container(
-                                  margin: const EdgeInsets.only(right: 8),
-                                  width: 52,
-                                  height: 52,
-                                  padding: const EdgeInsets.all(2),
-                                  decoration: BoxDecoration(
-                                    color: i == photo ? Colors.white : Colors.white.withValues(alpha: 0.35),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Img(photos[i], radius: BorderRadius.circular(10)),
+                    Positioned(
+                      left: 16,
+                      right: 16,
+                      bottom: 50,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          if (lobbies > 0 || v['is_fast_filling'] == true)
+                            GestureDetector(
+                              onTap: lobbies > 0 ? openLobbies : null,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 7,
+                                      height: 7,
+                                      decoration: const BoxDecoration(color: C.coral, shape: BoxShape.circle),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      lobbies > 0
+                                          ? '$lobbies open ${lobbies == 1 ? 'lobby' : 'lobbies'}'
+                                          : 'Fast filling',
+                                      style: t(11.5, w: FontWeight.w800, h: 1.2),
+                                    ),
+                                  ],
                                 ),
                               ),
-                          ],
-                        ),
+                            ),
+                          const Spacer(),
+                          if (photos.length > 1)
+                            GestureDetector(
+                              onTap: () => setState(() => photo = (photo + 1) % photos.length),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xBF0C2419),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  '${photo + 1} / ${photos.length} photos',
+                                  style: t(12, w: FontWeight.w700, c: Colors.white, h: 1.2),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
+                    ),
                   ],
                 ),
               ),
               Transform.translate(
-                offset: const Offset(0, -26),
-                child: Container(
-                  decoration: const BoxDecoration(
-                    color: C.ground,
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-                  ),
-                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Wrap(
-                        spacing: 8,
+                offset: const Offset(0, -28),
+                child: Panel(
+                  padding: const EdgeInsets.fromLTRB(18, 22, 18, 20),
+                  gap: 14,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${v['name']}', style: d(28, c: Colors.white, ls: -0.9, h: 1.1)),
+                              const SizedBox(height: 4),
+                              Text(
+                                sports.map((x) => x['name']).join(' · '),
+                                style: t(13.5, w: FontWeight.w600, c: C.panelInk),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            color: Colors.white,
+                            child: Column(
+                              children: [
+                                Container(
+                                  color: C.green700,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        '${v['rating']}',
+                                        style: t(14, w: FontWeight.w800, c: Colors.white, h: 1.2),
+                                      ),
+                                      const SizedBox(width: 3),
+                                      const DIcon(DIcons.star, size: 13, color: Colors.white),
+                                    ],
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  child: Text(
+                                    '${compact(v['review_count'])} ratings',
+                                    style: t(10.5, w: FontWeight.w700, c: C.mutedInk, h: 1.2),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.only(top: 12),
+                      decoration: const BoxDecoration(
+                        border: Border(top: BorderSide(color: Color(0x24FFFFFF))),
+                      ),
+                      child: Column(
                         children: [
-                          if (v['is_fast_filling'] == true) const Pill('Fast filling', bg: C.lime, fg: C.ink),
-                          Pill('Open · ${v['hours_label']}'),
+                          GestureDetector(
+                            onTap: () => openMaps(v['lat'], v['lng'], '${v['name']} ${v['address']}'),
+                            child: Row(
+                              children: [
+                                const DIcon(DIcons.pin, size: 18, color: C.sun),
+                                const SizedBox(width: 8),
+                                if (km != null) ...[
+                                  Text(
+                                    '$km km',
+                                    style: t(13.5, w: FontWeight.w800, c: Colors.white),
+                                  ),
+                                  const SizedBox(width: 4),
+                                ],
+                                Expanded(
+                                  child: Text(
+                                    '${km != null ? '· ' : ''}${'${v['address'] ?? ''}'.isNotEmpty ? v['address'] : v['area']}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: t(13.5, c: C.panelInk),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const DIcon(DIcons.clock, size: 18, color: C.sun),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Open',
+                                style: t(13.5, w: FontWeight.w800, c: Colors.white),
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text('· ${v['hours_label'] ?? ''}', style: t(13.5, c: C.panelInk)),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      Text(v['name'], style: d(26, h: 1.15, ls: -0.4)),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          const Icon(Icons.star_rounded, size: 16, color: C.star),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text.rich(
-                              TextSpan(
-                                style: t(14, c: C.muted),
+                    ),
+                    Row(
+                      children: [
+                        for (final (i, f) in [
+                          ('${v['surface'] ?? ''}', 'SURFACE'),
+                          '${v['size'] ?? ''}'.isNotEmpty
+                              ? ('${v['size']}', 'SIZE')
+                              : ('${v['court_count']} courts', 'COURTS'),
+                        ].where((f) => f.$1.isNotEmpty).indexed) ...[
+                          if (i > 0) const SizedBox(width: 10),
+                          Expanded(
+                            child: PanelTile(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  TextSpan(
-                                    text: '${v['rating']}',
-                                    style: t(14, w: FontWeight.w700),
+                                  Text(
+                                    f.$1,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: d(16, c: C.sun, ls: -0.3),
                                   ),
-                                  TextSpan(
-                                    text:
-                                        ' (${v['review_count']} reviews) · ${v['area']}'
-                                        '${v['distance_km'] != null ? ' · ${v['distance_km']} km' : ''}',
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    f.$2,
+                                    style: t(11.5, w: FontWeight.w700, c: C.panelInk, ls: 0.3),
                                   ),
                                 ],
                               ),
                             ),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        children: [
-                          Expanded(child: _fact('Surface', v['surface'])),
-                          const SizedBox(width: 10),
-                          Expanded(child: _fact('Size', v['size'])),
-                          const SizedBox(width: 10),
-                          Expanded(child: _fact('Courts', '${v['court_count']} courts')),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      const H2('Sports available'),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          for (var i = 0; i < sports.length && i < 3; i++) ...[
-                            if (i > 0) const SizedBox(width: 10),
-                            Expanded(child: _sportTile(sports[i], i == sportIdx, () => setState(() => sportIdx = i))),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      const H2('Amenities'),
-                      const SizedBox(height: 10),
-                      GridView.count(
-                        crossAxisCount: 3,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        mainAxisSpacing: 10,
-                        crossAxisSpacing: 10,
-                        childAspectRatio: 1.35,
-                        children: [for (final a in asList(v['amenities'])) _amenity(a)],
-                      ),
-                      if ((v['about'] ?? '').toString().isNotEmpty) ...[
-                        const SizedBox(height: 20),
-                        const H2('About'),
-                        const SizedBox(height: 8),
-                        Text(v['about'], style: t(14, c: C.muted, h: 1.6)),
                       ],
-                      if ((v['rules'] as List).isNotEmpty) ...[
-                        const SizedBox(height: 20),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: C.orangeBg,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: C.orangeSoft),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const H2('Venue rules', size: 16, color: C.orangeInk),
-                              const SizedBox(height: 8),
-                              for (final r in v['rules'])
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 2),
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text('•  ', style: t(14, c: C.orangeDeep, h: 1.7)),
-                                      Expanded(
-                                        child: Text(r, style: t(14, c: C.orangeDeep, h: 1.7)),
-                                      ),
-                                    ],
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (amenities.isNotEmpty)
+                      section(
+                        'Amenities',
+                        GridView.count(
+                          crossAxisCount: 4,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          mainAxisSpacing: 14,
+                          crossAxisSpacing: 10,
+                          childAspectRatio: 0.78,
+                          children: [
+                            for (final a in amenities)
+                              Column(
+                                children: [
+                                  Disc(icon: amenityIcons[a['icon']] ?? DIcons.check, size: 60, iconSize: 26),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '${a['name']}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                    style: t(12, w: FontWeight.w700, c: C.mutedInk),
                                   ),
-                                ),
-                            ],
-                          ),
+                                ],
+                              ),
+                          ],
                         ),
-                      ],
-                      if (asList(v['cancellation_policy']).isNotEmpty) ...[
-                        const SizedBox(height: 20),
-                        const H2('Cancellation policy'),
-                        const SizedBox(height: 10),
-                        CardBox(
+                      ),
+                    if (sports.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 26),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Rule('Pick a sport'),
+                            for (var i = 0; i < sports.length; i++)
+                              _sportRow(sports[i], i == sportIdx, () {
+                                setState(() => sportIdx = i);
+                                openSlots(sports[i]);
+                              }),
+                          ],
+                        ),
+                      ),
+                    if ('${v['about'] ?? ''}'.isNotEmpty)
+                      section('About', Text('${v['about']}', style: t(14, c: C.muted, h: 1.6))),
+                    if (rules.isNotEmpty)
+                      section(
+                        'Venue rules',
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (final r in rules)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('•  ', style: t(14, c: C.mutedInk, h: 1.6)),
+                                    Expanded(
+                                      child: Text('$r', style: t(14, c: C.mutedInk, h: 1.6)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    if (policy.isNotEmpty)
+                      section(
+                        'Cancellation',
+                        Container(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                          radius: 18,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: C.hair),
+                          ),
                           child: Column(
                             children: [
-                              for (final r in asList(v['cancellation_policy']))
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                              for (final (i, r) in policy.indexed)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 10),
+                                  decoration: i < policy.length - 1
+                                      ? const BoxDecoration(
+                                          border: Border(bottom: BorderSide(color: C.hair)),
+                                        )
+                                      : null,
                                   child: Row(
                                     children: [
                                       Container(
-                                        width: 46,
+                                        width: 48,
                                         padding: const EdgeInsets.symmetric(vertical: 6),
                                         alignment: Alignment.center,
                                         decoration: BoxDecoration(
-                                          color: (r['percent'] ?? 0) > 0 ? C.mint : C.redSoft,
+                                          color: ((r['percent'] ?? 0) as num) > 0 ? C.mint : C.redSoft,
                                           borderRadius: BorderRadius.circular(10),
                                         ),
                                         child: Text(
                                           '${r['percent']}%',
-                                          style: t(13, w: FontWeight.w700, c: (r['percent'] ?? 0) > 0 ? C.green700 : C.redInk),
+                                          style: t(
+                                            13,
+                                            w: FontWeight.w800,
+                                            c: ((r['percent'] ?? 0) as num) > 0 ? C.brand : C.redInk,
+                                          ),
                                         ),
                                       ),
                                       const SizedBox(width: 12),
@@ -311,239 +500,147 @@ class _VenueDetailsViewState extends State<_VenueDetailsView> {
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            Text(r['title'] ?? '', style: t(14, w: FontWeight.w600)),
-                                            Text(r['subtitle'] ?? '', style: t(12, c: C.muted)),
+                                            Text('${r['title'] ?? ''}', style: t(14, w: FontWeight.w700)),
+                                            Text('${r['subtitle'] ?? ''}', style: t(12, c: C.muted)),
                                           ],
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4, bottom: 8),
-                                child: Text(
-                                  'Rain or venue cancellation: 100% refund to everyone who paid.',
-                                  style: t(12, c: C.muted, h: 1.4),
-                                ),
-                              ),
                             ],
                           ),
                         ),
-                      ],
-                      const SizedBox(height: 20),
-                      const H2('Location'),
-                      const SizedBox(height: 10),
-                      CardBox(
-                        padding: EdgeInsets.zero,
-                        radius: 18,
-                        child: Column(
-                          children: [
-                            ClipRRect(
-                              borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-                              child: SizedBox(
-                                height: 120,
-                                child: CustomPaint(
-                                  painter: _MapGrid(),
-                                  child: const Center(child: Icon(Icons.location_on, size: 40, color: C.brand)),
-                                ),
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(v['address'] ?? '', style: t(13, c: C.muted, h: 1.4)),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  GhostButton(
-                                    'Directions',
-                                    height: 40,
-                                    radius: 12,
-                                    bg: C.mint,
-                                    fg: C.green700,
-                                    border: Colors.transparent,
-                                    fontSize: 13,
-                                    onTap: () => openMaps(v['lat'], v['lng'], '${v['name']} ${v['address']}'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
                       ),
-                      const SizedBox(height: 10),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        StickyBar(
+          children: [
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  cur == null ? 'Starts at' : '${cur['name']} from',
+                  style: t(12, w: FontWeight.w600, c: C.muted),
+                ),
+                Text.rich(
+                  TextSpan(
+                    text: inr(cur?['price'] ?? v['price_from']),
+                    children: [
+                      TextSpan(
+                        text: '/hr',
+                        style: t(13, w: FontWeight.w600, c: C.muted),
+                      ),
                     ],
                   ),
+                  style: d(19, ls: -0.4),
                 ),
-              ),
-            ],
-          ),
-        ),
-        Container(
-          padding: EdgeInsets.fromLTRB(20, 14, 20, 14 + MediaQuery.of(context).padding.bottom),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: C.line)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Flexible(
-                    child: Text(
-                      '${cur?['name'] ?? ''} from ',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: t(13, c: C.muted),
-                    ),
-                  ),
-                  Text(inr(cur?['price'] ?? v['price_from']), style: d(22)),
-                  Text(' /hr', style: t(13, c: C.muted)),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  if ((v['open_lobbies'] ?? 0) > 0) ...[
-                    Expanded(
-                      child: GhostButton(
-                        '${v['open_lobbies']} open ${v['open_lobbies'] == 1 ? 'lobby' : 'lobbies'}',
-                        icon: LucideIcons.userPlus,
-                        height: 52,
-                        bg: C.limeSoft,
-                        fg: C.green900,
-                        border: Colors.transparent,
-                        onTap: () async {
-                          final cubit = context.read<VenueDetailsCubit>();
-                          await context.pushLobbies(LobbiesArgs(venue: v, subtitle: '${v['name']} · ${v['area']}'));
-                          if (!cubit.isClosed) cubit.load();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                  ],
-                  Expanded(
-                    child: PrimaryButton(
-                      'Check slots',
-                      height: 52,
-                      radius: 16,
-                      fontSize: 15,
-                      trailing: const Icon(LucideIcons.calendarClock, color: Colors.white, size: 18),
-                      onTap: cur == null
-                          ? null
-                          : () async {
-                              final cubit = context.read<VenueDetailsCubit>();
-                              await context.pushSlotBooking(SlotBookingArgs(venue: v, initialSportId: cur['sport_id']));
-                              if (!cubit.isClosed) cubit.load();
-                            },
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+              ],
+            ),
+            const SizedBox(width: 14),
+            Expanded(child: GoButton('See free slots', onTap: cur == null ? null : () => openSlots(cur))),
+          ],
         ),
       ],
     );
   }
 
-  Widget _fact(String k, String? v) => CardBox(
-    padding: const EdgeInsets.all(12),
-    radius: 16,
-    child: Column(
+  /// One sport at the venue: name, price + peak surcharge, notes, photo with a SELECT button.
+  Widget _sportRow(Json sp, bool on, VoidCallback onSelect) => Container(
+    padding: const EdgeInsets.symmetric(vertical: 18),
+    decoration: const BoxDecoration(
+      border: Border(bottom: BorderSide(color: C.hair)),
+    ),
+    child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(k, style: t(11, c: C.muted)),
-        const SizedBox(height: 2),
-        Text(v ?? '—', style: t(14, w: FontWeight.w600), maxLines: 2),
-      ],
-    ),
-  );
-
-  Widget _sportTile(Json sp, bool on, VoidCallback onTap) {
-    final fg = hex(sp['fg']);
-    return Semantics(
-      selected: on,
-      button: true,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          height: 68,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(
-            color: on ? hex(sp['bg']) : Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: on ? fg : C.line, width: 2),
-          ),
-          child: Row(
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Img(sp['image'], width: 44, height: 44, radius: BorderRadius.circular(12)),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              if (on)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 5),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: C.mint, borderRadius: BorderRadius.circular(6)),
+                  child: Text(
+                    'SELECTED',
+                    style: t(11, w: FontWeight.w800, c: C.brand, h: 1.2),
+                  ),
+                ),
+              Text('${sp['name']}', style: d(17, ls: -0.3)),
+              const SizedBox(height: 5),
+              Text.rich(
+                TextSpan(
+                  text: '${inr(sp['price'])}/hr ',
                   children: [
-                    Text(
-                      sp['name'],
-                      style: t(15, w: FontWeight.w700, c: on ? fg : C.ink),
-                    ),
-                    Text(
-                      sp['meta'] ?? '',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: t(12, c: (on ? fg : C.ink).withValues(alpha: 0.85)),
-                    ),
+                    if (((sp['peak_surcharge'] ?? 0) as num) > 0)
+                      TextSpan(
+                        text: '+${inr(sp['peak_surcharge'])} peak',
+                        style: t(12.5, w: FontWeight.w600, c: C.muted),
+                      ),
                   ],
+                ),
+                style: t(15, w: FontWeight.w800),
+              ),
+              if ('${sp['meta'] ?? ''}'.isNotEmpty) ...[
+                const SizedBox(height: 5),
+                Text('${sp['meta']}', style: t(13, c: C.muted, h: 1.45)),
+              ],
+              if (sp['max_players'] != null) ...[
+                const SizedBox(height: 5),
+                Text(
+                  'Up to ${sp['max_players']} players',
+                  style: t(12.5, w: FontWeight.w600, c: C.mutedInk),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(width: 14),
+        SizedBox(
+          width: 128,
+          height: 140,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Img(Art.sportScene(sp['name']), width: 128, height: 122, radius: BorderRadius.circular(18)),
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 0,
+                child: Material(
+                  color: Colors.white,
+                  elevation: 3,
+                  shadowColor: const Color(0x330C2419),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: const BorderSide(color: C.hair),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: onSelect,
+                    child: SizedBox(
+                      height: 38,
+                      child: Center(
+                        child: Text(
+                          'SELECT',
+                          style: t(14, w: FontWeight.w800, c: C.brand, ls: 0.5),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _amenity(Json a) => CardBox(
-    padding: EdgeInsets.zero,
-    radius: 16,
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(color: hex(a['bg']), borderRadius: BorderRadius.circular(10)),
-          child: Icon(amenityIcons[a['icon']] ?? LucideIcons.check, size: 18, color: hex(a['fg'])),
-        ),
-        const SizedBox(height: 6),
-        Text(a['name'], style: t(12, w: FontWeight.w500)),
       ],
     ),
   );
-}
-
-class _MapGrid extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFE8F0E4));
-    final p = Paint()
-      ..color = const Color(0xFFD7E2D2)
-      ..strokeWidth = 1;
-    for (double x = 0; x < size.width; x += 28) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), p);
-    }
-    for (double y = 0; y < size.height; y += 28) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), p);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_) => false;
 }

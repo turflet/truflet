@@ -48,7 +48,7 @@ export function attendanceLine(p) {
 export default function MatchRoom() {
   const lobbyId = Number(useParams().lobbyId);
   const nav = useNavigate();
-  const back = useBack(routes.matches);
+  const back = useBack(`${routes.matches}?tab=mine`);
   const desktop = useIsDesktop();
   const { toast, sheet } = useOverlay();
   const openLobby = useOpenLobby();

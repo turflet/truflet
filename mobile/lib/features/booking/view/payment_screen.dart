@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../app/router/app_navigation.dart';
 import '../../../app/session/app_cubit.dart';
@@ -61,290 +60,329 @@ class _PaymentViewState extends State<_PaymentView> {
   @override
   Widget build(BuildContext context) => BlocBuilder<PaymentCubit, PaymentState>(builder: _build);
 
+  final _billKey = GlobalKey();
+
   Widget _build(BuildContext context, PaymentState st) {
     final b = st.booking, left = st.left, busy = st.busy, couponBusy = st.couponBusy, couponError = st.couponError;
-    final top = MediaQuery.of(context).padding.top;
     final applied = st.couponApplied;
     final mm = left.inMinutes.toString().padLeft(2, '0');
     final ss = (left.inSeconds % 60).toString().padLeft(2, '0');
     final peak = (b['peak_hours'] ?? 0) > 0;
-    return Scaffold(
-      body: Column(
+    final venue = asMap(b['venue']), sport = asMap(b['sport']), court = asMap(b['court']);
+    final gst = (context.read<AppCubit>().state.config['gst_percent'] ?? 18).round();
+    Widget bill(String k, String v, {bool green = false}) => Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
         children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(20, top + 8, 20, 12),
-            child: Row(
-              children: [
-                const BackSquare(),
-                const SizedBox(width: 12),
-                Text('Review & pay', style: d(20)),
-                const Spacer(),
+          Expanded(
+            child: Text(
+              k,
+              style: t(14, w: green ? FontWeight.w800 : FontWeight.w600, c: green ? C.green700 : C.ink),
+            ),
+          ),
+          Text(
+            v,
+            style: t(14, w: green ? FontWeight.w800 : FontWeight.w600, c: green ? C.green700 : C.ink),
+          ),
+        ],
+      ),
+    );
+
+    return LightStatusBar(
+      child: Scaffold(
+        body: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            Band(
+              title: 'Review & pay',
+              onBack: () => Navigator.of(context).maybePop(),
+              actions: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(color: C.warnBg, borderRadius: BorderRadius.circular(999)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: left == Duration.zero ? C.coralSoft : C.sun,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                   child: Row(
                     children: [
-                      const Icon(LucideIcons.clock, size: 14, color: C.warnInk),
+                      const DIcon(DIcons.clock, size: 15, color: C.ink),
                       const SizedBox(width: 6),
                       Text(
-                        left == Duration.zero ? 'Hold expired' : 'Slot held $mm:$ss',
-                        style: t(12, w: FontWeight.w600, c: C.warnInk),
+                        left == Duration.zero ? 'Hold expired' : 'Held $mm:$ss',
+                        style: t(12.5, w: FontWeight.w800, h: 1.2),
                       ),
                     ],
                   ),
                 ),
               ],
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
               children: [
-                Container(
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), boxShadow: shadowCard),
-                  clipBehavior: Clip.antiAlias,
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Row(
-                          children: [
-                            Img(b['venue']['image'], width: 72, height: 72, radius: BorderRadius.circular(16)),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(b['venue']['name'], style: d(17)),
-                                  const SizedBox(height: 4),
-                                  Text('${b['venue']['area']}, ${b['venue']['city']}', style: t(13, c: C.muted)),
-                                  const SizedBox(height: 4),
-                                  SportPill(b['sport'], label: '${b['sport']['name']} · ${b['court']['name']}'),
-                                ],
+                Panel(
+                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
+                  gap: 14,
+                  children: [
+                    Row(
+                      children: [
+                        Img(venue['image'], width: 64, height: 64, radius: BorderRadius.circular(16)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${venue['name']}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: t(17, w: FontWeight.w800, c: Colors.white),
                               ),
-                            ),
-                            GestureDetector(
-                              onTap: () => Navigator.of(context).pop(),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 8),
-                                child: Text(
-                                  'Edit',
-                                  style: t(13, w: FontWeight.w600, c: C.brand),
-                                ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${venue['area']}, ${venue['city']}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: t(12.5, w: FontWeight.w600, c: C.panelInk),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                        decoration: const BoxDecoration(
-                          color: C.ground,
-                          border: Border(top: BorderSide(color: C.dashed)),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(child: KV('Date', b['date_label'].toString().replaceFirst('Today, ', 'Today, '), vSize: 13)),
-                            Expanded(child: KV('Time', b['time_short'], vSize: 13)),
-                            Expanded(child: KV('Duration', '${b['duration']} ${b['duration'] == 1 ? 'hr' : 'hrs'}', vSize: 13)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: C.line),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Have a coupon?', style: t(13, w: FontWeight.w600)),
-                      const SizedBox(height: 10),
-                      Row(
+                      ],
+                    ),
+                    PanelTile(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
                         children: [
                           Expanded(
-                            child: Container(
-                              height: 48,
-                              padding: const EdgeInsets.symmetric(horizontal: 14),
-                              decoration: BoxDecoration(
-                                color: C.ground,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: C.line),
-                              ),
-                              child: TextField(
-                                controller: code,
-                                enabled: !applied,
-                                textCapitalization: TextCapitalization.characters,
-                                style: t(14),
-                                decoration: InputDecoration(
-                                  border: InputBorder.none,
-                                  hintText: 'Enter code',
-                                  hintStyle: t(14, c: C.muted),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${court['name']} · ${sport['name']}',
+                                  style: t(15, w: FontWeight.w800, c: Colors.white),
                                 ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          SizedBox(
-                            height: 48,
-                            child: Material(
-                              color: applied ? C.mint : C.brand,
-                              borderRadius: BorderRadius.circular(12),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(12),
-                                onTap: couponBusy ? null : _coupon,
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 18),
-                                  child: Center(
-                                    child: Text(
-                                      applied ? 'Remove' : 'Apply',
-                                      style: t(14, w: FontWeight.w700, c: applied ? C.brand : Colors.white),
-                                    ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  '${b['date_label']} · ${b['time_short']} · ${b['duration']} hr${b['duration'] == 1 ? '' : 's'}',
+                                  style: t(13, w: FontWeight.w600, c: C.panelInk),
+                                ),
+                                const SizedBox(height: 4),
+                                GestureDetector(
+                                  onTap: () => Navigator.of(context).maybePop(),
+                                  child: Text(
+                                    'Change slot',
+                                    style: t(12.5, w: FontWeight.w800, c: C.sun),
                                   ),
                                 ),
-                              ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            inr(b['slot_amount']),
+                            style: t(16, w: FontWeight.w800, c: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 22, 16, 22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (applied)
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF4F8F5),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: C.green700, width: 1.5),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: const BoxDecoration(color: C.green700, shape: BoxShape.circle),
+                            child: const DIcon(DIcons.check, size: 20, color: Colors.white),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${b['coupon']} applied · ${inr(b['discount'])} saved',
+                                  style: t(14, w: FontWeight.w800),
+                                ),
+                                Text(
+                                  'Taken off your total below',
+                                  style: t(12, w: FontWeight.w600, c: C.muted),
+                                ),
+                              ],
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: couponBusy ? null : _coupon,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: couponBusy
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFB4401F)),
+                                    )
+                                  : Text(
+                                      'Remove',
+                                      style: t(13, w: FontWeight.w800, c: const Color(0xFFB4401F)),
+                                    ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 10),
-                      if (couponError != null)
-                        Text(couponError, style: t(12, c: C.warnInk))
-                      else if (applied)
-                        Text(
-                          '${b['coupon']} applied — you save ${inr(b['discount'])}',
-                          style: t(13, w: FontWeight.w600, c: C.brand),
-                        )
-                      else
-                        Text.rich(
-                          TextSpan(
-                            style: t(12, c: C.muted),
-                            children: [
-                              const TextSpan(text: 'Try '),
-                              TextSpan(
-                                text: 'PLAY100',
-                                style: t(12, w: FontWeight.w700),
-                              ),
-                              const TextSpan(text: ' for ₹100 off your first booking'),
+                    )
+                  else
+                    DashedBorderBox(
+                      radius: 18,
+                      color: C.chipLine,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                const DIcon(DIcons.tag, size: 20, color: C.green700),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: TextField(
+                                    controller: code,
+                                    textCapitalization: TextCapitalization.characters,
+                                    style: t(14, w: FontWeight.w700),
+                                    onChanged: (_) => setState(() {}),
+                                    decoration: InputDecoration(
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                      hintText: 'Have a coupon code?',
+                                      hintStyle: t(14, w: FontWeight.w600, c: C.muted),
+                                    ),
+                                  ),
+                                ),
+                                Material(
+                                  color: code.text.trim().isEmpty ? C.chip : C.brand,
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(12),
+                                    onTap: couponBusy || code.text.trim().isEmpty ? null : _coupon,
+                                    child: Container(
+                                      height: 40,
+                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                      alignment: Alignment.center,
+                                      child: couponBusy
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                            )
+                                          : Text(
+                                              'Apply',
+                                              style: t(
+                                                13,
+                                                w: FontWeight.w800,
+                                                c: code.text.trim().isEmpty ? C.muted : Colors.white,
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (couponError != null) ...[
+                              const SizedBox(height: 8),
+                              Text(couponError, style: t(12, c: C.warnInk)),
                             ],
-                          ),
+                          ],
                         ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: C.line),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const H2('Price details', size: 16),
-                      const SizedBox(height: 14),
-                      PriceRow(
-                        'Slot charges (${b['duration']} × ${inr(b['rate'])}${peak ? ' peak' : ''})',
-                        inr(b['slot_amount']),
                       ),
-                      const SizedBox(height: 10),
-                      PriceRow('Convenience fee', inr(b['convenience_fee'])),
-                      const SizedBox(height: 10),
-                      PriceRow(
-                        'GST on fee (${(context.read<AppCubit>().state.config['gst_percent'] ?? 18).round()}%)',
-                        inr(b['gst']),
-                      ),
-                      if (applied) ...[
-                        const SizedBox(height: 10),
+                    ),
+                  const SizedBox(height: 22),
+                  Rule('Bill details', key: _billKey),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: C.hair),
+                    ),
+                    child: Column(
+                      children: [
+                        bill(
+                          'Court fee (${b['duration']} × ${inr(b['rate'])}${peak ? ' peak' : ''})',
+                          inr(b['slot_amount']),
+                        ),
+                        bill('Convenience fee', inr(b['convenience_fee'])),
+                        bill('GST on fee ($gst%)', inr(b['gst'])),
+                        if (applied) bill('Coupon ${b['coupon']}', '−${inr(b['discount'])}', green: true),
+                        const Divider(height: 8, color: C.hair),
+                        const SizedBox(height: 6),
                         Row(
                           children: [
                             Expanded(
-                              child: Text(
-                                'Coupon discount',
-                                style: t(14, w: FontWeight.w600, c: C.brand),
-                              ),
+                              child: Text('To pay', style: t(16, w: FontWeight.w800)),
                             ),
-                            Text(
-                              '−${inr(b['discount'])}',
-                              style: t(14, w: FontWeight.w600, c: C.brand),
-                            ),
+                            Text(inr(b['total']), style: t(16, w: FontWeight.w800)),
                           ],
                         ),
                       ],
-                      const SizedBox(height: 10),
-                      PriceRow('To pay', inr(b['total']), bold: true, top: true, size: 16),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 1),
+                        child: DIcon(DIcons.shield, size: 18, color: C.green700),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          "Secure UPI payment. Not ready? Pay later from My bookings before the hold ends. Refunds follow the venue's cancellation policy.",
+                          style: t(12.5, c: C.muted, h: 1.5),
+                        ),
+                      ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(LucideIcons.shieldCheck, size: 14, color: C.muted),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text('100% secure payments · Free cancellation up to 6 hrs before', style: t(12, c: C.muted)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Not ready? Go back and pay later from My Bookings before the hold ends.',
-                  textAlign: TextAlign.center,
-                  style: t(12, c: C.muted),
+                ],
+              ),
+            ),
+          ],
+        ),
+        bottomNavigationBar: StickyBar(
+          children: [
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(inr(b['total']), style: d(19, ls: -0.4)),
+                GestureDetector(
+                  onTap: () {
+                    final ctx = _billKey.currentContext;
+                    if (ctx != null) Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 300));
+                  },
+                  child: Text(
+                    'View bill',
+                    style: t(12, w: FontWeight.w800, c: C.green700),
+                  ),
                 ),
               ],
             ),
-          ),
-          Container(
-            padding: EdgeInsets.fromLTRB(20, 14, 20, 14 + MediaQuery.of(context).padding.bottom),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(top: BorderSide(color: C.line)),
+            const SizedBox(width: 14),
+            Expanded(
+              child: GoButton('Pay ${inr(b['total'])}', loading: busy, onTap: _pay),
             ),
-            child: Container(
-              height: 56,
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), boxShadow: shadowBrand),
-              child: Material(
-                color: C.brand,
-                borderRadius: BorderRadius.circular(16),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: busy ? null : _pay,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: busy
-                        ? const Center(
-                            child: SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.4),
-                            ),
-                          )
-                        : Row(
-                            children: [
-                              Text(
-                                'Pay ${inr(b['total'])}',
-                                style: t(16, w: FontWeight.w700, c: Colors.white),
-                              ),
-                              const Spacer(),
-                              const Icon(LucideIcons.arrowRight, size: 18, color: Colors.white),
-                            ],
-                          ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

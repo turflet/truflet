@@ -136,7 +136,7 @@ export default function ResourceList() {
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
             <thead>
-              <tr style={{ background: C.ground }}>
+              <tr style={{ background: C.paper }}>
                 {schema?.columns.map((c) => (
                   <th
                     key={c.path}

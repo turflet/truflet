@@ -309,7 +309,7 @@ export function Segmented({ labels, index, onChange, counts, badges, bg = C.segm
 }
 
 /** Network image (Cloudinary / Django media) with the app's placeholder. */
-export function Img({ url, fallback = 'turf', radius, style, className, alt = '' }) {
+export function Img({ url, fallback = 'turf-night', radius, style, className, alt = '' }) {
   const src = url || `/images/${fallback}.jpg`;
   return (
     <img

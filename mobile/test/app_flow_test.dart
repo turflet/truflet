@@ -51,18 +51,21 @@ void main() {
     expect(deps.appCubit.state.onboarded, isTrue);
   });
 
-  testWidgets('returning player goes straight to the tabs; account tabs are gated', (tester) async {
+  testWidgets('returning player goes straight to the sections; account sections are gated', (tester) async {
     final deps = await tester.runAsync(() => _boot({'onboarded': true, 'areaId': 1, 'areaName': 'HSR', 'cityName': 'Bengaluru'}));
     await tester.pumpWidget(TurfletApp(deps: deps!));
     await _settle(tester);
     expect(find.byType(MainShell), findsOneWidget);
 
+    // Turfs · Matches are the circular section tabs in the header; open lobbies need no account.
     await tester.tap(find.text('Matches'));
     await _settle(tester, 500);
     expect(deps.appCubit.state.tab, AppTab.matches);
-    expect(find.byType(SignInPrompt), findsOneWidget);
+    expect(find.text('Open lobbies'), findsOneWidget);
+    expect(find.byType(SignInPrompt), findsNothing);
 
-    await tester.tap(find.text('Bookings'));
+    // Bookings opens from the header (no bottom nav) and asks a signed-out player to sign in.
+    deps.appCubit.setTab(AppTab.bookings);
     await _settle(tester, 500);
     expect(deps.appCubit.state.tab, AppTab.bookings);
     expect(find.byType(SignInPrompt), findsOneWidget);

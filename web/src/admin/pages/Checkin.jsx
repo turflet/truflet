@@ -86,7 +86,7 @@ export default function Checkin() {
               ['Players', `Up to ${b.players}`],
               ['Paid', inr(b.total)],
             ].map(([k, v]) => (
-              <div key={k} style={{ padding: 12, borderRadius: 14, background: C.ground }}>
+              <div key={k} style={{ padding: 12, borderRadius: 14, background: C.paper }}>
                 <div style={t(12, { c: C.muted })}>{k}</div>
                 <div style={{ marginTop: 2, ...t(15, { w: 700 }) }}>{v}</div>
               </div>
