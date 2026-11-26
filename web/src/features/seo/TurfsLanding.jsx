@@ -84,7 +84,7 @@ export default function TurfsLanding() {
         {venues.length === 0 ? (
           <Empty icon={MapPin} title="No venues yet" body={`We're onboarding venues in ${city.name}. Check back soon.`} />
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(3, 1fr)' : '1fr', gap: 18 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(3, 1fr)' : 'minmax(0, 1fr)', gap: 18 }}>
             {venues.map((v) => (
               <VenueCard key={v.id} v={v} fav={app.saved.has(v.id)} onOpen={() => nav(routes.venue(v.id))} onFav={() => toggleFav(v)} />
             ))}

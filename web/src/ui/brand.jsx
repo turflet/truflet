@@ -98,7 +98,7 @@ const SECTIONS = [
 /** The big circular section tabs (Turfs · Matches) that replace the bottom nav. [badge] sits under Matches. */
 export function SectionTabs({ active, badge }) {
   return (
-    <nav aria-label="Sections" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 4, padding: '6px 12px 0', alignItems: 'end' }}>
+    <nav aria-label="Sections" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 104px)', gap: 4, padding: '6px 12px 0', alignItems: 'end' }}>
       {SECTIONS.map((s, i) => {
         const on = i === active;
         return (

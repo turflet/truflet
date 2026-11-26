@@ -70,7 +70,7 @@ export default function Lobbies() {
               }
             />
           )}
-          <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(auto-fill, minmax(420px, 1fr))' : '1fr', gap: desktop ? 18 : 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(auto-fill, minmax(420px, 1fr))' : 'minmax(0, 1fr)', gap: desktop ? 18 : 12 }}>
             {data?.lobbies.map((g) => (
               <LobbyCard key={g.id} lobby={g} showVenue={isCity || date == null} onClick={() => openLobby(g, reload)} onAction={() => openLobby(g, reload)} />
             ))}

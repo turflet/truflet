@@ -649,14 +649,14 @@ function SlotBooking({ venue, reschedule, initialSportId, initialDate, initialSt
             textAlign: 'left',
           }}
         >
-          <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <span style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
             <span className="clamp1" style={t(12, { w: 700, c: check.valid ? C.panelInk : C.muted })}>
               {cartLine}
             </span>
             {isReschedule ? (
               <span style={d(18, { c: check.valid ? '#fff' : '#57625A', ls: -0.3 })}>New slot</span>
             ) : (
-              <span style={d(18, { c: check.valid ? '#fff' : '#57625A', ls: -0.3 })}>
+              <span className="clamp1" style={d(18, { c: check.valid ? '#fff' : '#57625A', ls: -0.3 })}>
                 {total} <span style={t(12, { w: 600, c: check.valid ? C.panelInk : C.muted })}>turf for the squad</span>
               </span>
             )}
@@ -664,7 +664,7 @@ function SlotBooking({ venue, reschedule, initialSportId, initialDate, initialSt
           {busy ? (
             <Spinner />
           ) : (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, ...t(16, { w: 800, c: check.valid ? '#fff' : '#57625A' }) }}>
+            <span style={{ flex: 'none', marginLeft: 12, display: 'flex', alignItems: 'center', gap: 6, ...t(16, { w: 800, c: check.valid ? '#fff' : '#57625A' }) }}>
               {isReschedule ? 'Confirm' : 'Continue'}
               {check.valid && <ChevronRight size={18} color={C.sun} strokeWidth={2.6} />}
             </span>

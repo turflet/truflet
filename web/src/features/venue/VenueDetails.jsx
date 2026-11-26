@@ -150,7 +150,7 @@ export default function VenueDetails() {
       <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
         <Fact k="Surface" v={v.surface} />
         <Fact k="Size" v={v.size} />
-        <Fact k="Courts" v={`${v.court_count} courts`} />
+        <Fact k="Courts" v={`${v.court_count} ${v.court_count === 1 ? 'court' : 'courts'}`} />
       </div>
       <H2 style={{ margin: '20px 0 10px' }}>Sports available</H2>
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${desktop ? Math.min(Math.max(sports.length, 1), 3) : Math.min(Math.max(sports.length, 1), 3)}, 1fr)`, gap: 10 }}>
@@ -393,7 +393,7 @@ export default function VenueDetails() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,.14)' }}>
             <button onClick={() => openMaps(v)} style={{ display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left', ...t(13.5, { c: '#fff' }) }}>
               <MapPin size={18} color={C.sun} style={{ flex: 'none' }} />
-              {v.distance_km != null && <b style={{ fontWeight: 800 }}>{v.distance_km} km</b>}
+              {v.distance_km != null && <b style={{ fontWeight: 800, flex: 'none', whiteSpace: 'nowrap' }}>{v.distance_km} km</b>}
               <span className="clamp1" style={{ color: C.panelInk }}>
                 {v.distance_km != null ? '· ' : ''}
                 {v.address || v.area}
@@ -409,7 +409,7 @@ export default function VenueDetails() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
               {[
                 [v.surface, 'SURFACE'],
-                [v.size || `${v.court_count} courts`, v.size ? 'SIZE' : 'COURTS'],
+                [v.size || `${v.court_count} ${v.court_count === 1 ? 'court' : 'courts'}`, v.size ? 'SIZE' : 'COURTS'],
               ]
                 .filter((x) => x[0])
                 .map(([val, k]) => (

@@ -66,7 +66,7 @@ export default function Matches() {
         />
       )}
       {open.data && open.data.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(auto-fill, minmax(380px, 1fr))' : '1fr', gap: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(auto-fill, minmax(380px, 1fr))' : 'minmax(0, 1fr)', gap: 18 }}>
           {open.data.map((g) => (
             <LobbyCard key={g.id} lobby={g} onClick={() => openLobby(g, open.reload)} onAction={() => openLobby(g, open.reload)} />
           ))}
@@ -96,7 +96,7 @@ export default function Matches() {
       {my.error && <ErrorRetry message={my.error} onRetry={my.retry} />}
       {!my.data && !my.error && <ListSkeleton rows={3} />}
       {my.data && lists[mineTab].length === 0 && empty}
-      <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(auto-fill, minmax(380px, 1fr))' : '1fr', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(auto-fill, minmax(380px, 1fr))' : 'minmax(0, 1fr)', gap: 14 }}>
         {my.data && lists[mineTab].map((g) => <MatchTile key={g.id} lobby={g} onClick={() => openLobby(g, my.reload)} />)}
       </div>
     </SignInGate>
@@ -180,8 +180,8 @@ export default function Matches() {
                 onClick={createLobby}
                 style={{ position: 'relative', minHeight: 170, padding: 16, borderRadius: 22, background: C.green900, overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 4, textAlign: 'left' }}
               >
-                <span style={t(11, { w: 800, c: C.panelInk, ls: 1.2 })}>SQUAD BUILDER</span>
-                <span style={{ maxWidth: 150, ...d(22, { c: C.sun, h: 1.1, ls: -0.6 }) }}>Got friends? Fill the rest.</span>
+                <span style={{ position: 'relative', zIndex: 1, ...t(11, { w: 800, c: C.panelInk, ls: 1.2 }) }}>SQUAD BUILDER</span>
+                <span style={{ maxWidth: '54%', position: 'relative', zIndex: 1, ...d(22, { c: C.sun, h: 1.1, ls: -0.6 }) }}>Got friends? Fill the rest.</span>
                 <span
                   style={{
                     marginTop: 'auto',
@@ -200,7 +200,7 @@ export default function Matches() {
                 >
                   CREATE LOBBY <ChevronRight size={14} color={C.brand} strokeWidth={2.8} />
                 </span>
-                <span style={{ position: 'absolute', right: -10, bottom: -10, width: 180, height: 160, borderRadius: '22px 0 0 0', overflow: 'hidden' }}>
+                <span style={{ position: 'absolute', right: -10, bottom: -10, width: 'min(180px, 44%)', height: 160, borderRadius: '22px 0 0 0', overflow: 'hidden' }}>
                   <Img url={ART.training} alt="Training cones and bibs on turf" />
                 </span>
               </button>

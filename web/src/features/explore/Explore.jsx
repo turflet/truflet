@@ -216,7 +216,7 @@ export default function Explore() {
     <>
       {error && <ErrorRetry message={error} onRetry={() => load()} />}
       {venues == null && !error && (
-        <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(auto-fill, minmax(300px, 1fr))' : '1fr', gap: desktop ? 22 : 18, padding: desktop ? 0 : '0 16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(auto-fill, minmax(300px, 1fr))' : 'minmax(0, 1fr)', gap: desktop ? 22 : 18, padding: desktop ? 0 : '0 16px' }}>
           {Array.from({ length: desktop ? 6 : 3 }, (_, i) => (
             <CardBox key={i} padding={0} radius={24} shadowCss={shadow.card} style={{ overflow: 'hidden' }}>
               <Sk h={170} r={0} />
@@ -232,7 +232,7 @@ export default function Explore() {
         <div style={{ padding: 32, textAlign: 'center', ...t(14, { c: C.muted }) }}>No arenas match. Try another sport, time or fewer filters.</div>
       )}
       {venues && venues.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(auto-fill, minmax(300px, 1fr))' : '1fr', gap: desktop ? 22 : 18, padding: desktop ? 0 : '0 16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(auto-fill, minmax(300px, 1fr))' : 'minmax(0, 1fr)', gap: desktop ? 22 : 18, padding: desktop ? 0 : '0 16px' }}>
           {venues.map((v) => (
             <VenueCard key={v.id} v={v} fav={app.saved.has(v.id)} onOpen={() => nav(routes.venue(v.id))} onFav={() => toggleFav(v)} />
           ))}
@@ -480,32 +480,32 @@ const ChipButton = ({ children, onClick, on }) => (
 function PromoGrid({ offer, live, onLobbies, onSquad }) {
   const tile = { position: 'relative', borderRadius: 22, background: C.green900, overflow: 'hidden', padding: 14, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 2 };
   const round = (src) => (
-    <span style={{ position: 'absolute', right: -8, bottom: -8, width: 74, height: 74, borderRadius: '50%', overflow: 'hidden', border: `3px solid ${C.brand}` }}>
+    <span style={{ position: 'absolute', right: 10, bottom: 10, width: 60, height: 60, borderRadius: '50%', overflow: 'hidden', border: `3px solid ${C.brand}` }}>
       <Img url={src} />
     </span>
   );
   const lobbies = (
-    <button className="tap" onClick={onLobbies} style={{ ...tile, minHeight: 138 }}>
-      <span style={{ maxWidth: 110, ...d(16, { c: C.sun, h: 1.1, ls: -0.3 }) }}>{live > 0 ? `${live} open lobbies` : 'Open lobbies'}</span>
-      <span style={{ maxWidth: 90, ...t(12, { w: 600, c: C.panelInk }) }}>Join solo, pay your share</span>
+    <button className="tap" onClick={onLobbies} style={{ ...tile, minHeight: 138, paddingBottom: 78 }}>
+      <span style={d(16, { c: C.sun, h: 1.1, ls: -0.3 })}>{live > 0 ? `${live} open lobbies` : 'Open lobbies'}</span>
+      <span style={t(12, { w: 600, c: C.panelInk })}>Join solo, pay your share</span>
       {round(ART.indoor)}
     </button>
   );
   const squad = (
-    <button className="tap" onClick={onSquad} style={{ ...tile, minHeight: 138 }}>
-      <span style={{ maxWidth: 100, ...d(16, { c: C.sun, h: 1.1, ls: -0.3 }) }}>Split with squad</span>
-      <span style={{ maxWidth: 90, ...t(12, { w: 600, c: C.panelInk }) }}>Pay only your share</span>
+    <button className="tap" onClick={onSquad} style={{ ...tile, minHeight: 138, paddingBottom: 78 }}>
+      <span style={d(16, { c: C.sun, h: 1.1, ls: -0.3 })}>Split with squad</span>
+      <span style={t(12, { w: 600, c: C.panelInk })}>Pay only your share</span>
       {round(ART.training)}
     </button>
   );
   if (!offer) return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>{lobbies}{squad}</div>;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gridTemplateRows: '138px 138px', gap: 10 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gridTemplateRows: 'minmax(138px, auto) minmax(138px, auto)', gap: 10 }}>
       <div style={{ ...tile, gridRow: 'span 2', padding: 16, gap: 4 }}>
         {offer.tag && <span style={t(11, { w: 800, c: C.panelInk, ls: 1.2 })}>{String(offer.tag).toUpperCase()}</span>}
         <span style={{ whiteSpace: 'pre-line', ...d(22, { c: C.sun, h: 1.05, ls: -0.6 }) }}>{offer.title ?? ''}</span>
         <span style={t(13, { w: 600, c: C.panelInk })}>{offer.subtitle ?? ''}</span>
-        <span style={{ position: 'absolute', left: 34, right: -10, bottom: -10, height: 150, borderRadius: '22px 0 0 0', overflow: 'hidden' }}>
+        <span style={{ flex: '1 0 72px', margin: '10px -16px -16px 18px', minHeight: 72, maxHeight: 150, borderRadius: '20px 0 0 0', overflow: 'hidden' }}>
           <Img url={offer.image || ART.floodlit} fallback="turf-night" />
         </span>
       </div>
@@ -518,8 +518,8 @@ function PromoGrid({ offer, live, onLobbies, onSquad }) {
 /** Round sport photo with a forest ring when picked. */
 function SportDisc({ label, img, on, onClick }) {
   return (
-    <button aria-pressed={on} onClick={onClick} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-      <span className="tap" style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', boxShadow: on ? `0 0 0 3px ${C.brand}` : undefined, transition: 'box-shadow 150ms' }}>
+    <button aria-pressed={on} onClick={onClick} style={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <span className="tap" style={{ width: '100%', maxWidth: 72, aspectRatio: '1', borderRadius: '50%', overflow: 'hidden', boxShadow: on ? `0 0 0 3px ${C.brand}` : undefined, transition: 'box-shadow 150ms' }}>
         <Img url={img} />
       </span>
       <span className="clamp1" style={{ maxWidth: '100%', ...t(12.5, { w: on ? 800 : 700, c: on ? C.ink : C.mutedInk }) }}>

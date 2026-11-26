@@ -403,20 +403,20 @@ function Profile() {
                   key={sp.sport_id}
                   disabled={!editing}
                   onClick={() => setSports(sports.map((x, k) => (k === i ? { ...x, level: ((x.level ?? 0) + 1) % 3 } : x)))}
-                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}
+                  style={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}
                 >
-                  <span style={{ width: 64, height: 64, borderRadius: '50%', overflow: 'hidden', boxShadow: i === 0 ? `0 0 0 3px ${C.brand}` : undefined }}>
+                  <span style={{ width: '100%', maxWidth: 64, aspectRatio: '1', borderRadius: '50%', overflow: 'hidden', boxShadow: i === 0 ? `0 0 0 3px ${C.brand}` : undefined }}>
                     <Img url={sportThumb(sp.name, sp.image)} />
                   </span>
                   <span className="clamp1" style={{ maxWidth: '100%', ...t(12.5, { w: 700, c: C.mutedInk }) }}>
                     {sp.name}
                   </span>
-                  <span style={t(10.5, { w: 800, c: lv[2], ls: 0.3 })}>{lv[0].toUpperCase()}</span>
+                  <span className="clamp1" style={{ maxWidth: '100%', ...t(9.5, { w: 800, c: lv[2], ls: 0.2 }) }}>{lv[0].toUpperCase()}</span>
                 </button>
               );
             })}
             {sports.length < app.sports.length && (
-              <button onClick={addSport} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+              <button onClick={addSport} style={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
                 <Disc icon={Plus} size={64} />
                 <span style={t(12.5, { w: 700, c: C.mutedInk })}>Add</span>
               </button>

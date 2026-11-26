@@ -80,7 +80,7 @@ function MyBookings() {
   );
 
   const cards = (
-    <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(auto-fill, minmax(420px, 1fr))' : '1fr', gap: 16 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: desktop ? 'repeat(auto-fill, minmax(420px, 1fr))' : 'minmax(0, 1fr)', gap: 16 }}>
       {listed.map((b) => (
         <BookingCard key={b.id} b={b} onRate={() => rate(b)} />
       ))}

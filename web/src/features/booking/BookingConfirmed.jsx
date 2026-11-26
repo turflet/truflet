@@ -231,7 +231,7 @@ export default function BookingConfirmed() {
           <span style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
             <span style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={t(11, { w: 800, c: C.muted, ls: 1 })}>BOOKING ID</span>
-              <span style={t(16, { w: 800, ls: 0.5 })}>{b.code}</span>
+              <span style={{ whiteSpace: 'nowrap', ...t('clamp(13px, 4.2vw, 16px)', { w: 800, ls: 0.3 }) }}>{b.code}</span>
             </span>
             {pin.length > 0 && (
               <span style={{ display: 'flex', flexDirection: 'column' }}>
