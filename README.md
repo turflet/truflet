@@ -36,6 +36,7 @@ python manage.py runserver 0.0.0.0:8000
 | What | Where | Dev behaviour |
 |---|---|---|
 | SMTP for sign-in codes (Gmail app password, SES, SendGrid, Mailgun…) | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL` in `.env`, then `OTP_DEV_MODE=False` | Without `EMAIL_HOST`, emails print in the server console; in dev mode the code is always `123456` and the API returns it |
+| NotifyKit (push + sign-in email via the self-hosted notification service) | `NOTIFICATION_SERVICE=notifications.notifykit.NotifyKitNotificationService`, `NOTIFYKIT_URL`, `NOTIFYKIT_API_KEY` (see notify-kit `docs/deploy-home-laptop.md`) | Unset: pushes go straight to FCM, emails via SMTP |
 | Payment gateway (Razorpay…) | `payments/gateways.py`, `PAYMENT_PROVIDER` | `mock` confirms payments instantly |
 
 ## 2. Mobile app

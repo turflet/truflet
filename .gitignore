@@ -1,1 +1,4 @@
 .DS_Store
+
+# Firebase / Google service account keys (never commit)
+*firebase-adminsdk*.json

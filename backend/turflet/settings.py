@@ -172,6 +172,11 @@ YOUPI_WEBHOOK_SECRET = os.getenv("YOUPI_WEBHOOK_SECRET", "")  # secret: verifies
 # process; point these at client classes (HTTP / queue) once a service runs as its own microservice.
 PAYMENT_SERVICE = os.getenv("PAYMENT_SERVICE", "payments.service.LocalPaymentService")
 NOTIFICATION_SERVICE = os.getenv("NOTIFICATION_SERVICE", "notifications.service.LocalNotificationService")
+# NotifyKit (central notification microservice). Used when NOTIFICATION_SERVICE is
+# notifications.notifykit.NotifyKitNotificationService; sign-in emails also go through it when set.
+NOTIFYKIT_URL = os.getenv("NOTIFYKIT_URL", "").rstrip("/")
+NOTIFYKIT_API_KEY = os.getenv("NOTIFYKIT_API_KEY", "")  # secret: the project's server key
+NOTIFYKIT_TIMEOUT = float(os.getenv("NOTIFYKIT_TIMEOUT", "4"))
 PUBLIC_APP_URL = os.getenv("PUBLIC_APP_URL", "turflet.app")
 
 # The React web app (web/): player site + admin dashboard at /admin. The backend's /, /privacy/,
