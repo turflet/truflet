@@ -119,12 +119,16 @@ def create_hold(user, venue, court_id, sport_id, date, start, duration):
     Booking.objects.filter(user=user, status="held").update(status="expired")
     p = price_breakdown(vs, start, duration)
     cfg = AppConfig.get()
-    return Booking.objects.create(
+    booking = Booking.objects.create(
         user=user, venue=venue, court=court, sport=vs.sport, date=date, start_hour=start, duration=duration,
         players=vs.max_players, held_until=timezone.now() + timedelta(minutes=cfg.hold_minutes),
         slot_amount=p["slot_amount"], peak_hours=p["peak_hours"], convenience_fee=p["convenience_fee"],
         gst=p["gst"], total=p["total"],
     )
+    notifications.notify(user.pk, "Slot held for you",
+           f"{venue.name} · {date:%a, %-d %b} · {fmt_hour(start)} · pay within {cfg.hold_minutes} min to confirm",
+           "booking")
+    return booking
 
 
 def _vs(booking):

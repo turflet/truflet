@@ -58,6 +58,10 @@ class PushService {
       messaging.onTokenRefresh.listen((t) {
         if (_signedIn) _register(t);
       });
+      if (kDebugMode) {
+        // ignore: deprecated_member_use
+        messaging.getToken().then((t) => debugPrint('FCM_TOKEN: $t'), onError: (e) => debugPrint('FCM_TOKEN error: $e'));
+      }
 
       // the app was launched by tapping a notification
       final initial = await messaging.getInitialMessage();
